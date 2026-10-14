@@ -102,13 +102,11 @@ jobs:
           echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "Building release versionName=$VERSION_NAME versionCode=$VERSION_CODE"
 
-      - name: Run release unit tests
-        env:
-          KEYSTORE_PATH: ${{ env.KEYSTORE_PATH }}
-          STORE_PASSWORD: ${{ secrets.STORE_PASSWORD }}
-          KEY_ALIAS: ${{ env.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew testReleaseUnitTest --continue --no-configuration-cache
+      - name: Run unit tests
+        # Note: AGP only creates unit-test tasks for the debug build type by
+        # default (testBuildType = "debug"), so testReleaseUnitTest does not
+        # exist. Debug unit tests cover the same code.
+        run: ./gradlew testDebugUnitTest --continue --no-configuration-cache
 
       - name: Build signed release (APK + AAB)
         env:
