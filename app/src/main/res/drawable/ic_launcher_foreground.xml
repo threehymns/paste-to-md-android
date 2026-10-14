@@ -5,50 +5,56 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Soft ambient drop shadow under clipboard -->
-    <path
-        android:fillColor="@color/launcher_card_shadow"
-        android:pathData="M39,30h30a7,7 0 0,1 7,7v38a7,7 0 0,1 -7,7h-30a7,7 0 0,1 -7,-7v-38a7,7 0 0,1 7,-7z" />
+    <group
+        android:pivotX="54"
+        android:pivotY="52"
+        android:scaleX="0.88"
+        android:scaleY="0.88">
 
-    <!-- Clipboard document base (Material You surface sheet) -->
-    <path
-        android:fillColor="@color/launcher_card_surface"
-        android:pathData="M39,28h30a7,7 0 0,1 7,7v38a7,7 0 0,1 -7,7h-30a7,7 0 0,1 -7,-7v-38a7,7 0 0,1 7,-7z" />
+        <!-- Soft ambient drop shadow under clipboard -->
+        <path
+            android:fillColor="@color/launcher_card_shadow"
+            android:pathData="M39,30h30a7,7 0 0,1 7,7v38a7,7 0 0,1 -7,7h-30a7,7 0 0,1 -7,-7v-38a7,7 0 0,1 7,-7z" />
 
-    <!-- Top clip body -->
-    <path
-        android:fillColor="@color/launcher_clip"
-        android:pathData="M47.5,22h13a3.5,3.5 0 0,1 3.5,3.5v2a3.5,3.5 0 0,1 -3.5,3.5h-13a3.5,3.5 0 0,1 -3.5,-3.5v-2a3.5,3.5 0 0,1 3.5,-3.5z" />
+        <!-- Clipboard document base (Material You surface sheet) -->
+        <path
+            android:fillColor="@color/launcher_card_surface"
+            android:pathData="M39,28h30a7,7 0 0,1 7,7v38a7,7 0 0,1 -7,7h-30a7,7 0 0,1 -7,-7v-38a7,7 0 0,1 7,-7z" />
 
-    <!-- Top clip inner accent -->
-    <path
-        android:fillColor="@color/launcher_clip_accent"
-        android:pathData="M51.5,25h5a1.5,1.5 0 0,1 1.5,1.5v0a1.5,1.5 0 0,1 -1.5,1.5h-5a1.5,1.5 0 0,1 -1.5,-1.5v0a1.5,1.5 0 0,1 1.5,-1.5z" />
+        <!-- Top clip body -->
+        <path
+            android:fillColor="@color/launcher_clip"
+            android:pathData="M47.5,22h13a3.5,3.5 0 0,1 3.5,3.5v2a3.5,3.5 0 0,1 -3.5,3.5h-13a3.5,3.5 0 0,1 -3.5,-3.5v-2a3.5,3.5 0 0,1 3.5,-3.5z" />
 
-    <!-- Markdown 'M' Symbol -->
-    <path
-        android:fillColor="@color/launcher_primary_symbol"
-        android:pathData="M38,39 L41.2,39 L45,46.5 L48.8,39 L52,39 L52,57 L48.8,57 L48.8,44.5 L45.8,50.8 L44.2,50.8 L41.2,44.5 L41.2,57 L38,57 Z" />
+        <!-- Top clip inner accent -->
+        <path
+            android:fillColor="@color/launcher_clip_accent"
+            android:pathData="M51.5,25h5a1.5,1.5 0 0,1 1.5,1.5v0a1.5,1.5 0 0,1 -1.5,1.5h-5a1.5,1.5 0 0,1 -1.5,-1.5v0a1.5,1.5 0 0,1 1.5,-1.5z" />
 
-    <!-- Markdown '↓' Symbol -->
-    <path
-        android:fillColor="@color/launcher_primary_symbol"
-        android:pathData="M61.4,39 L64.6,39 L64.6,49 L70,49 L63,57 L56,49 L61.4,49 Z" />
+        <!-- Markdown 'M' Symbol -->
+        <path
+            android:fillColor="@color/launcher_primary_symbol"
+            android:pathData="M38,39 L41.2,39 L45,46.5 L48.8,39 L52,39 L52,57 L48.8,57 L48.8,44.5 L45.8,50.8 L44.2,50.8 L41.2,44.5 L41.2,57 L38,57 Z" />
 
-    <!-- Formatted text syntax representation lines -->
-    <!-- Heading bar -->
-    <path
-        android:fillColor="@color/launcher_line_primary"
-        android:pathData="M39.3,63h29.4a1.3,1.3 0 0,1 1.3,1.3v0a1.3,1.3 0 0,1 -1.3,1.3h-29.4a1.3,1.3 0 0,1 -1.3,-1.3v0a1.3,1.3 0 0,1 1.3,-1.3z" />
+        <!-- Markdown '↓' Symbol -->
+        <path
+            android:fillColor="@color/launcher_primary_symbol"
+            android:pathData="M61.4,39 L64.6,39 L64.6,49 L70,49 L63,57 L56,49 L61.4,49 Z" />
 
-    <!-- Body text line 1 -->
-    <path
-        android:fillColor="@color/launcher_line_secondary"
-        android:pathData="M39.3,68.5h20a1.3,1.3 0 0,1 1.3,1.3v0a1.3,1.3 0 0,1 -1.3,1.3h-20a1.3,1.3 0 0,1 -1.3,-1.3v0a1.3,1.3 0 0,1 1.3,-1.3z" />
+        <!-- Formatted text syntax representation lines -->
+        <!-- Heading bar -->
+        <path
+            android:fillColor="@color/launcher_line_primary"
+            android:pathData="M39.3,63h29.4a1.3,1.3 0 0,1 1.3,1.3v0a1.3,1.3 0 0,1 -1.3,1.3h-29.4a1.3,1.3 0 0,1 -1.3,-1.3v0a1.3,1.3 0 0,1 1.3,-1.3z" />
 
-    <!-- Body text line 2 -->
-    <path
-        android:fillColor="@color/launcher_line_tertiary"
-        android:pathData="M39.3,74h12a1,1 0 0,1 1,1v0a1,1 0 0,1 -1,1h-12a1,1 0 0,1 -1,-1v0a1,1 0 0,1 1,-1z" />
+        <!-- Body text line 1 -->
+        <path
+            android:fillColor="@color/launcher_line_secondary"
+            android:pathData="M39.3,68.5h20a1.3,1.3 0 0,1 1.3,1.3v0a1.3,1.3 0 0,1 -1.3,1.3h-20a1.3,1.3 0 0,1 -1.3,-1.3v0a1.3,1.3 0 0,1 1.3,-1.3z" />
 
+        <!-- Body text line 2 -->
+        <path
+            android:fillColor="@color/launcher_line_tertiary"
+            android:pathData="M39.3,74h12a1,1 0 0,1 1,1v0a1,1 0 0,1 -1,1h-12a1,1 0 0,1 -1,-1v0a1,1 0 0,1 1,-1z" />
+    </group>
 </vector>
