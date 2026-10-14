@@ -16,3 +16,9 @@
 local.properties
 .env
 debug.keystore
+# Release upload keystore + local backups (base64 goes to GitHub Secrets, never the file).
+/my-upload-key.jks
+/my-upload-key.jks.bak.*
+*.jks.bak.*
+# Local scratch space for environment-specific notes and scripts.
+/.scratch/
