@@ -11,12 +11,13 @@ android {
 
   defaultConfig {
     applicationId = "com.aistudio.pastetomarkdown.xzyqwe"
-    minSdk = 24
+    minSdk = 26
     targetSdk = 36
     versionCode = (findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
     versionName = (findProperty("versionName") as String?) ?: "0.0.1"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    resourceConfigurations += listOf("en")
   }
 
   signingConfigs {
@@ -37,13 +38,24 @@ android {
 
   buildTypes {
     release {
-      isCrunchPngs = false
-      isMinifyEnabled = false
+      isCrunchPngs = true
+      isMinifyEnabled = true
+      isShrinkResources = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
     debug {
       signingConfig = signingConfigs.getByName("debugConfig")
+    }
+  }
+  packaging {
+    resources {
+      excludes += listOf(
+        "/META-INF/{AL2.0,LGPL2.1}",
+        "/META-INF/LICENSE*",
+        "/META-INF/NOTICE*",
+        "/META-INF/DEPENDENCIES"
+      )
     }
   }
   compileOptions {
@@ -65,17 +77,13 @@ secrets {
 dependencies {
   implementation(platform(libs.androidx.compose.bom))
   implementation(libs.androidx.activity.compose)
-  implementation(libs.androidx.compose.material.icons.core)
-  implementation(libs.androidx.compose.material.icons.extended)
   implementation(libs.androidx.compose.material3)
   implementation(libs.androidx.compose.ui)
   implementation("androidx.compose.ui:ui-text-google-fonts:1.7.5")
   implementation(libs.androidx.compose.ui.graphics)
-  implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.core.ktx)
   implementation(libs.androidx.lifecycle.runtime.ktx)
   implementation(libs.kotlinx.coroutines.android)
-  implementation(libs.kotlinx.coroutines.core)
   implementation(libs.flexmark.html2md)
 
   testImplementation(libs.androidx.compose.ui.test.junit4)

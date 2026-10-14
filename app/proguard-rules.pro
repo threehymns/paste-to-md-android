@@ -12,10 +12,8 @@
 #   public *;
 #}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Flexmark HTML to Markdown converter & Jsoup parser
+-keep class com.vladsch.flexmark.** { *; }
+-dontwarn com.vladsch.flexmark.**
+-keep class org.jsoup.** { *; }
+-dontwarn org.jsoup.**

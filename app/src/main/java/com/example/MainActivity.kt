@@ -13,16 +13,12 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.ContentPaste
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import com.example.ui.AppIcons
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -142,7 +138,7 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.ContentPaste,
+                        imageVector = AppIcons.ContentPaste,
                         contentDescription = null,
                         modifier = Modifier.size(64.dp),
                         tint = MaterialTheme.colorScheme.primary
@@ -167,7 +163,7 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
                             .fillMaxWidth(0.8f)
                             .height(56.dp)
                     ) {
-                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                        Icon(AppIcons.ContentPaste, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
                         Text("Paste", style = com.example.ui.theme.EmphasizedTypography.titleMedium)
                     }
                 }
@@ -213,7 +209,7 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
                     ),
                     modifier = Modifier.size(56.dp)
                 ) {
-                    Icon(Icons.Default.Delete, contentDescription = "Clear")
+                    Icon(AppIcons.Delete, contentDescription = "Clear")
                 }
 
                 FilledTonalButton(
@@ -222,7 +218,7 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
                     modifier = Modifier.weight(1f).height(56.dp),
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Icon(Icons.Default.ContentPaste, contentDescription = "Paste")
+                    Icon(AppIcons.ContentPaste, contentDescription = "Paste")
                     Spacer(Modifier.width(8.dp))
                     Text("Paste Again", style = com.example.ui.theme.EmphasizedTypography.labelLarge)
                 }
@@ -232,7 +228,7 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
                     enabled = markdownText.isNotEmpty(),
                     modifier = Modifier.size(56.dp)
                 ) {
-                    Icon(Icons.Default.Download, contentDescription = "Save file")
+                    Icon(AppIcons.Download, contentDescription = "Save file")
                 }
             }
 
@@ -244,7 +240,7 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.fillMaxWidth().height(64.dp),
                 shape = RoundedCornerShape(20.dp)
             ) {
-                Icon(Icons.Default.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(28.dp))
+                Icon(AppIcons.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(28.dp))
                 Spacer(Modifier.width(12.dp))
                 Text("Copy Markdown", style = com.example.ui.theme.EmphasizedTypography.titleLarge)
             }
