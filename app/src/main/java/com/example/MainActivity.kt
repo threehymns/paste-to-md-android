@@ -81,8 +81,13 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
     val clipboardManager = remember {
         context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
     }
-    
-    val converter = remember { FlexmarkHtmlConverter.builder().build() }
+
+    // Warm up the converter in the background during idle time after the first frame paints
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.Default) {
+            MarkdownConverterHolder.converter
+        }
+    }
 
     fun copyToClipboard() {
         val clip = ClipData.newPlainText("Markdown", markdownText)
@@ -107,7 +112,7 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
             coroutineScope.launch {
                 val converted = withContext(Dispatchers.Default) {
                     try {
-                        converter.convert(html)
+                        MarkdownConverterHolder.converter.convert(html)
                     } catch (e: Exception) {
                         "Error converting HTML: ${e.message}"
                     }
@@ -251,3 +256,10 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
         }
     }
 }
+
+private object MarkdownConverterHolder {
+    val converter: FlexmarkHtmlConverter by lazy {
+        FlexmarkHtmlConverter.builder().build()
+    }
+}
+
