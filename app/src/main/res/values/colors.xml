@@ -20,6 +20,4 @@
     <color name="launcher_line_primary">#818CF8</color>
     <color name="launcher_line_secondary">#A5B4FC</color>
     <color name="launcher_line_tertiary">#C7D2FE</color>
-    <color name="launcher_sparkle">#FBBF24</color>
-    <color name="launcher_sparkle_accent">#FDE68A</color>
 </resources>

@@ -20,8 +20,4 @@
     <color name="launcher_line_primary">@android:color/system_accent2_300</color>
     <color name="launcher_line_secondary">@android:color/system_accent2_400</color>
     <color name="launcher_line_tertiary">@android:color/system_accent2_600</color>
-
-    <!-- Transformation sparkle badge: Tertiary dynamic accent -->
-    <color name="launcher_sparkle">@android:color/system_accent3_300</color>
-    <color name="launcher_sparkle_accent">@android:color/system_accent3_100</color>
 </resources>

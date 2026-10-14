@@ -40,9 +40,4 @@
         android:fillColor="#4DFFFFFF"
         android:pathData="M39.3,74h12a1,1 0 0,1 1,1v0a1,1 0 0,1 -1,1h-12a1,1 0 0,1 -1,-1v0a1,1 0 0,1 1,-1z" />
 
-    <!-- Conversion Sparkle -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M69.5,23.5 Q69.5,26.5 72.5,26.5 Q69.5,26.5 69.5,29.5 Q69.5,26.5 66.5,26.5 Q69.5,26.5 69.5,23.5 Z" />
-
 </vector>
