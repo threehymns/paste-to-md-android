@@ -44,7 +44,7 @@ jobs:
           # Prioritize persistent keystore to preserve signing signature across updates
           if [ -n "$SECRET_DEBUG_KEYSTORE" ]; then
             echo "Restoring debug.keystore from GitHub Secret DEBUG_KEYSTORE_BASE64..."
-            echo "$SECRET_DEBUG_KEYSTORE" | base64 -d > debug.keystore
+            printf '%s' "$SECRET_DEBUG_KEYSTORE" | base64 -d > debug.keystore
           elif [ -f debug.keystore.base64 ]; then
             echo "Restoring debug.keystore from repository file debug.keystore.base64..."
             base64 -d debug.keystore.base64 > debug.keystore
@@ -56,23 +56,60 @@ jobs:
           fi
 
           ls -la debug.keystore
+          # Fail fast on a truncated/corrupt keystore instead of producing an
+          # unsigned/uninstallable APK later.
+          if [ ! -s debug.keystore ]; then
+            echo "::error::debug.keystore is empty after restore. Check DEBUG_KEYSTORE_BASE64 secret."
+            exit 1
+          fi
+          keytool -list -keystore debug.keystore -storepass android -alias androiddebugkey > /dev/null || {
+            echo "::error::debug.keystore failed keytool validation. It is corrupt or has the wrong password/alias."
+            exit 1
+          }
 
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
       - name: Build Android App (Assemble Debug APK)
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace --no-configuration-cache
+
+      - name: Verify Debug APK integrity
+        run: |
+          set -e
+          APK=$(ls app/build/outputs/apk/debug/*.apk | head -n 1)
+          echo "APK: $APK"
+          ls -lh "$APK"
+          if [ ! -s "$APK" ]; then
+            echo "::error::APK is empty (0 bytes). Build did not produce a valid APK."
+            exit 1
+          fi
+          file "$APK"
+          sha256sum "$APK"
+          # This is the check that catches the corrupt artifact that later fails
+          # locally with "ZIP decompression failed (-3)": an APK is a ZIP and
+          # must pass unzip -t before upload.
+          unzip -t "$APK" | tail -n 5
+          # Verify signing (uses CI's build-tools apksigner if available).
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME"/build-tools/* 2>/dev/null | sort -V | tail -n 1)
+          if [ -x "$BUILD_TOOLS/apksigner" ]; then
+            "$BUILD_TOOLS/apksigner" verify --print-certs "$APK"
+          else
+            echo "apksigner not found, skipping signature verification."
+          fi
 
       - name: Run Unit Tests
-        run: ./gradlew testDebugUnitTest --continue
+        run: ./gradlew testDebugUnitTest --continue --no-configuration-cache
 
       - name: Upload Debug APK
-        if: always()
+        # Only upload on success. The previous `if: always()` uploaded partial/
+        # corrupt APKs from failed KSP builds, which then failed locally with
+        # "ZIP decompression failed (-3)" when extracting the artifact zip.
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
           path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: warn
+          if-no-files-found: error
 
       - name: Upload Test Reports
         if: always()
