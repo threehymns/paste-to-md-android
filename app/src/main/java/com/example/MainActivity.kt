@@ -6,39 +6,180 @@ import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
+import androidx.activity.BackEventCompat
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
-import com.example.ui.AppIcons
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.data.AppSettings
+import com.example.data.AppSettingsRepository
+import com.example.ui.AppIcons
+import com.example.ui.settings.SettingsScreen
 import com.example.ui.theme.MyApplicationTheme
-import com.vladsch.flexmark.html2md.converter.FlexmarkHtmlConverter
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+enum class AppScreen {
+    CONVERTER,
+    SETTINGS
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        val settingsRepository = AppSettingsRepository(applicationContext)
+
         setContent {
-            MyApplicationTheme {
-                Scaffold(
-                    modifier = Modifier.fillMaxSize()
-                ) { innerPadding ->
-                    PasteToMarkdownScreen(modifier = Modifier.padding(innerPadding))
+            val settings by settingsRepository.settings.collectAsStateWithLifecycle()
+            var currentScreen by rememberSaveable { mutableStateOf(AppScreen.CONVERTER) }
+
+            val backProgress = remember { Animatable(0f) }
+            var isPredictiveBackActive by remember { mutableStateOf(false) }
+            var swipeEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
+
+            PredictiveBackHandler(enabled = currentScreen == AppScreen.SETTINGS) { progressFlow ->
+                try {
+                    isPredictiveBackActive = true
+                    progressFlow.collect { event ->
+                        swipeEdge = event.swipeEdge
+                        backProgress.snapTo(event.progress)
+                    }
+                    backProgress.animateTo(
+                        targetValue = 1f,
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+                    )
+                    currentScreen = AppScreen.CONVERTER
+                } catch (e: CancellationException) {
+                    backProgress.animateTo(
+                        targetValue = 0f,
+                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+                    )
+                } finally {
+                    isPredictiveBackActive = false
+                    backProgress.snapTo(0f)
+                }
+            }
+
+            MyApplicationTheme(
+                themeMode = settings.themeMode,
+                dynamicColor = settings.dynamicColor
+            ) {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        // Render Converter screen when active or as back preview destination
+                        if (currentScreen == AppScreen.CONVERTER || isPredictiveBackActive) {
+                            val converterScale = if (isPredictiveBackActive) {
+                                0.92f + (0.08f * backProgress.value)
+                            } else {
+                                1f
+                            }
+                            val scrimAlpha = if (isPredictiveBackActive) {
+                                (1f - backProgress.value) * 0.25f
+                            } else {
+                                0f
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .graphicsLayer {
+                                        scaleX = converterScale
+                                        scaleY = converterScale
+                                    }
+                            ) {
+                                Scaffold(
+                                    modifier = Modifier.fillMaxSize()
+                                ) { innerPadding ->
+                                    PasteToMarkdownScreen(
+                                        settings = settings,
+                                        onOpenSettings = { currentScreen = AppScreen.SETTINGS },
+                                        modifier = Modifier.padding(innerPadding)
+                                    )
+                                }
+
+                                if (scrimAlpha > 0f) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = scrimAlpha))
+                                    )
+                                }
+                            }
+                        }
+
+                        // Render Settings screen when active
+                        if (currentScreen == AppScreen.SETTINGS) {
+                            val progress = backProgress.value
+                            val settingsScale = if (isPredictiveBackActive) {
+                                1f - (progress * 0.12f)
+                            } else {
+                                1f
+                            }
+                            val cornerRadius = if (isPredictiveBackActive) {
+                                (progress * 28).dp
+                            } else {
+                                0.dp
+                            }
+                            val sign = if (swipeEdge == BackEventCompat.EDGE_LEFT) 1 else -1
+                            val horizontalShift = if (isPredictiveBackActive) {
+                                (progress * 64 * sign).dp
+                            } else {
+                                0.dp
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .offset(x = horizontalShift)
+                                    .graphicsLayer {
+                                        scaleX = settingsScale
+                                        scaleY = settingsScale
+                                    }
+                                    .shadow(
+                                        elevation = if (isPredictiveBackActive) (progress * 16).dp else 0.dp,
+                                        shape = RoundedCornerShape(cornerRadius)
+                                    )
+                                    .clip(RoundedCornerShape(cornerRadius))
+                                    .background(MaterialTheme.colorScheme.background)
+                            ) {
+                                SettingsScreen(
+                                    settings = settings,
+                                    repository = settingsRepository,
+                                    onNavigateBack = { currentScreen = AppScreen.CONVERTER }
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -47,8 +188,12 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
-    var markdownText by remember { mutableStateOf("") }
+fun PasteToMarkdownScreen(
+    settings: AppSettings = AppSettings(),
+    onOpenSettings: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    var markdownText by rememberSaveable { mutableStateOf("") }
     var isConverting by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -81,14 +226,16 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
     // Warm up the converter in the background during idle time after the first frame paints
     LaunchedEffect(Unit) {
         withContext(Dispatchers.Default) {
-            MarkdownConverterHolder.converter
+            MarkdownConverter.convert("", settings)
         }
     }
 
-    fun copyToClipboard() {
+    fun copyToClipboard(showToast: Boolean = true) {
         val clip = ClipData.newPlainText("Markdown", markdownText)
         clipboardManager.setPrimaryClip(clip)
-        Toast.makeText(context, "Markdown copied to clipboard", Toast.LENGTH_SHORT).show()
+        if (showToast) {
+            Toast.makeText(context, "Markdown copied to clipboard", Toast.LENGTH_SHORT).show()
+        }
     }
 
     fun pasteFromClipboard() {
@@ -108,18 +255,33 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
             coroutineScope.launch {
                 val converted = withContext(Dispatchers.Default) {
                     try {
-                        MarkdownConverterHolder.converter.convert(html)
+                        MarkdownConverter.convert(html, settings)
                     } catch (e: Exception) {
                         "Error converting HTML: ${e.message}"
                     }
                 }
                 markdownText = converted
                 isConverting = false
+
+                if (settings.autoCopyOnConvert) {
+                    val autoClip = ClipData.newPlainText("Markdown", converted)
+                    clipboardManager.setPrimaryClip(autoClip)
+                    Toast.makeText(context, "Converted and copied to clipboard!", Toast.LENGTH_SHORT).show()
+                }
             }
         } else if (text != null) {
             markdownText = text
+            if (settings.autoCopyOnConvert) {
+                copyToClipboard(showToast = true)
+            }
         } else {
             Toast.makeText(context, "No text or HTML found in clipboard", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    LaunchedEffect(settings.autoPasteOnLaunch) {
+        if (settings.autoPasteOnLaunch && markdownText.isEmpty()) {
+            pasteFromClipboard()
         }
     }
 
@@ -129,8 +291,31 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
         if (markdownText.isEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp, end = 4.dp),
+                horizontalArrangement = Arrangement.End
+            ) {
+                IconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier
+                        .size(52.dp)
+                        .testTag("settings_button")
+                ) {
+                    Icon(
+                        imageVector = AppIcons.Settings,
+                        contentDescription = stringResource(R.string.settings_title),
+                        modifier = Modifier.size(28.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
             Box(
-                modifier = Modifier.fillMaxWidth().weight(1f),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
@@ -162,6 +347,7 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
                         modifier = Modifier
                             .fillMaxWidth(0.8f)
                             .height(56.dp)
+                            .testTag("paste_button")
                     ) {
                         Icon(AppIcons.ContentPaste, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
                         Text("Paste", style = com.example.ui.theme.EmphasizedTypography.titleMedium)
@@ -174,7 +360,8 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
                 onValueChange = { markdownText = it },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .weight(1f)
+                    .testTag("markdown_text_field"),
                 placeholder = { 
                     Text(
                         "Pasted HTML will be converted to Markdown here...",
@@ -193,11 +380,11 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
                 )
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 FilledTonalIconButton(
@@ -207,7 +394,9 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
                         containerColor = MaterialTheme.colorScheme.errorContainer,
                         contentColor = MaterialTheme.colorScheme.onErrorContainer
                     ),
-                    modifier = Modifier.size(56.dp)
+                    modifier = Modifier
+                        .size(52.dp)
+                        .testTag("clear_button")
                 ) {
                     Icon(AppIcons.Delete, contentDescription = "Clear")
                 }
@@ -215,29 +404,54 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
                 FilledTonalButton(
                     onClick = { pasteFromClipboard() },
                     enabled = !isConverting,
-                    modifier = Modifier.weight(1f).height(56.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp),
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(52.dp)
+                        .testTag("paste_again_button"),
                     shape = RoundedCornerShape(16.dp)
                 ) {
                     Icon(AppIcons.ContentPaste, contentDescription = "Paste")
-                    Spacer(Modifier.width(8.dp))
-                    Text("Paste Again", style = com.example.ui.theme.EmphasizedTypography.labelLarge)
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = "Paste Again",
+                        style = com.example.ui.theme.EmphasizedTypography.labelLarge,
+                        maxLines = 1
+                    )
                 }
-                
+
                 FilledTonalIconButton(
                     onClick = { saveFileLauncher.launch("converted.md") },
                     enabled = markdownText.isNotEmpty(),
-                    modifier = Modifier.size(56.dp)
+                    modifier = Modifier
+                        .size(52.dp)
+                        .testTag("save_file_button")
                 ) {
                     Icon(AppIcons.Download, contentDescription = "Save file")
+                }
+
+                FilledTonalIconButton(
+                    onClick = onOpenSettings,
+                    modifier = Modifier
+                        .size(52.dp)
+                        .testTag("settings_button")
+                ) {
+                    Icon(
+                        imageVector = AppIcons.Settings,
+                        contentDescription = stringResource(R.string.settings_title)
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(12.dp))
-            
+
             Button(
                 onClick = { copyToClipboard() },
                 enabled = markdownText.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth().height(64.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .testTag("copy_button"),
                 shape = RoundedCornerShape(20.dp)
             ) {
                 Icon(AppIcons.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(28.dp))
@@ -245,17 +459,10 @@ fun PasteToMarkdownScreen(modifier: Modifier = Modifier) {
                 Text("Copy Markdown", style = com.example.ui.theme.EmphasizedTypography.titleLarge)
             }
         }
-        
+
         if (isConverting) {
             Spacer(modifier = Modifier.height(16.dp))
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
         }
     }
 }
-
-private object MarkdownConverterHolder {
-    val converter: FlexmarkHtmlConverter by lazy {
-        FlexmarkHtmlConverter.builder().build()
-    }
-}
-

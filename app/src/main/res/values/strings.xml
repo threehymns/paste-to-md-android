@@ -1,3 +1,29 @@
 <resources>
     <string name="app_name">Paste to Markdown</string>
+    <string name="settings_title">Settings</string>
+    <string name="category_appearance">Appearance</string>
+    <string name="category_clipboard">Clipboard &amp; Automation</string>
+    <string name="category_markdown">Markdown Formatting</string>
+    <string name="category_about">About &amp; Reset</string>
+    <string name="setting_theme_mode">Theme</string>
+    <string name="setting_dynamic_color">Dynamic Color</string>
+    <string name="setting_dynamic_color_desc">Use wallpaper-based colors on Android 12+</string>
+    <string name="setting_auto_paste">Auto-paste on launch</string>
+    <string name="setting_auto_paste_desc">Automatically convert clipboard content when opening the app</string>
+    <string name="setting_auto_copy">Auto-copy on convert</string>
+    <string name="setting_auto_copy_desc">Instantly copy converted Markdown back to clipboard</string>
+    <string name="setting_heading_style">Heading style</string>
+    <string name="setting_bullet_marker">List bullet marker</string>
+    <string name="setting_code_fence">Code block style</string>
+    <string name="setting_emphasis_marker">Emphasis delimiter</string>
+    <string name="setting_soft_breaks">Preserve line breaks</string>
+    <string name="setting_soft_breaks_desc">Preserve soft line breaks instead of collapsing into single paragraphs</string>
+    <string name="setting_reset_defaults">Reset to defaults</string>
+    <string name="setting_reset_defaults_desc">Restore all preferences to original settings</string>
+    <string name="dialog_reset_title">Reset settings?</string>
+    <string name="dialog_reset_message">All appearance, formatting, and clipboard settings will be restored to their defaults.</string>
+    <string name="action_reset">Reset</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="app_version_label">Version 1.1.0</string>
+    <string name="app_about_desc">Powered by Flexmark HTML-to-Markdown engine</string>
 </resources>
