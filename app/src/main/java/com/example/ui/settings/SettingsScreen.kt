@@ -13,8 +13,6 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.BuildConfig
@@ -421,21 +419,19 @@ private fun <T> ConnectedChoiceRow(
             ToggleButton(
                 checked = checked,
                 onCheckedChange = { onSelect(option) },
-                modifier = Modifier
-                    .weight(1f)
-                    .semantics { role = Role.RadioButton },
+                modifier = Modifier.weight(1f),
+                icon = {
+                    Icon(
+                        imageVector = iconFor(option),
+                        contentDescription = null
+                    )
+                },
                 shapes = when (index) {
                     0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
                     options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
                     else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
                 }
             ) {
-                Icon(
-                    imageVector = iconFor(option),
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(Modifier.size(8.dp))
                 Text(
                     text = labelFor(option),
                     maxLines = 1,
