@@ -6,7 +6,6 @@ import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
-import androidx.activity.BackEventCompat
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -14,6 +13,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -22,10 +23,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -48,6 +49,34 @@ enum class AppScreen {
     SETTINGS
 }
 
+private val BackTransitionSpec = spring<Float>(
+    stiffness = Spring.StiffnessMediumLow,
+    dampingRatio = Spring.DampingRatioNoBouncy
+)
+
+// Full-screen predictive-back transition. The outgoing surface scales 100% -> 90% and
+// fades out by the 35% progress mark; the incoming surface scales 110% -> 100% and
+// fades in after that. The fade follows raw gesture progress, while the scale is fed
+// through the system predictive-back curve so the surface quickly starts to exit.
+private val PredictiveBackEasing: Easing = CubicBezierEasing(0.1f, 0.1f, 0f, 1f)
+private const val BackFadeThroughThreshold = 0.35f
+private const val BackExitScaleTarget = 0.9f
+private const val BackEnterScaleStart = 1.1f
+
+// Fade helpers take the raw gesture progress.
+private fun backExitAlpha(progress: Float): Float =
+    (1f - progress / BackFadeThroughThreshold).coerceIn(0f, 1f)
+
+private fun backEnterAlpha(progress: Float): Float =
+    ((progress - BackFadeThroughThreshold) / (1f - BackFadeThroughThreshold)).coerceIn(0f, 1f)
+
+// Scale helpers take the eased progress.
+private fun backExitScale(progress: Float): Float =
+    1f + (BackExitScaleTarget - 1f) * progress
+
+private fun backEnterScale(progress: Float): Float =
+    BackEnterScaleStart + (1f - BackEnterScaleStart) * progress
+
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,29 +90,82 @@ class MainActivity : ComponentActivity() {
             var currentScreen by rememberSaveable { mutableStateOf(AppScreen.CONVERTER) }
 
             val backProgress = remember { Animatable(0f) }
-            var isPredictiveBackActive by remember { mutableStateOf(false) }
-            var swipeEdge by remember { mutableIntStateOf(BackEventCompat.EDGE_LEFT) }
+            var isBackTransitionActive by remember { mutableStateOf(false) }
+            // Non-null while the transition settles to 0 (cancelled) or 1 (committed).
+            var backSettleTarget by remember { mutableStateOf<Float?>(null) }
+            // Invalidates a settle animation that is finishing as a new gesture takes over.
+            var backTransitionGeneration by remember { mutableIntStateOf(0) }
+            val converterStateHolder = rememberSaveableStateHolder()
+
+            // The predictive back coroutine is cancelled when a gesture is cancelled, so the
+            // return animation has to run outside of it. Both completion and cancellation feed
+            // this effect, which then owns the transition until it settles. The generation is a
+            // key too so the toolbar back can restart an in-flight settle.
+            LaunchedEffect(backSettleTarget, backTransitionGeneration) {
+                val target = backSettleTarget ?: return@LaunchedEffect
+                val generation = backTransitionGeneration
+
+                backProgress.animateTo(
+                    targetValue = target,
+                    animationSpec = BackTransitionSpec
+                )
+
+                // A new gesture has taken over. Do not let the finished settle animation
+                // snap progress or swap screens underneath it.
+                if (backTransitionGeneration != generation) return@LaunchedEffect
+
+                // Springs stop within their visibility threshold. Snap the last fraction so
+                // the fade-through is at an exact endpoint before screens are swapped/removed.
+                backProgress.snapTo(target)
+
+                // A new gesture may have started while the final snap was applying.
+                if (backTransitionGeneration != generation) return@LaunchedEffect
+
+                if (target == 1f) {
+                    currentScreen = AppScreen.CONVERTER
+                }
+                isBackTransitionActive = false
+                if (target == 1f) {
+                    // Reset progress after the screen swap. No in-app back gesture can start
+                    // while the converter is showing, so this cannot interfere with a gesture.
+                    backProgress.snapTo(0f)
+                }
+
+                // The toolbar back can restart the settle while the final reset is applying.
+                if (backTransitionGeneration != generation) return@LaunchedEffect
+                backSettleTarget = null
+            }
 
             PredictiveBackHandler(enabled = currentScreen == AppScreen.SETTINGS) { progressFlow ->
+                backTransitionGeneration++
+                val generation = backTransitionGeneration
+                backSettleTarget = null
+                isBackTransitionActive = true
+
+                // If a settle was still running, continue from its current visual state
+                // instead of snapping back to the start of the transition.
+                val initialProgress = backProgress.value
+                val remainingProgress = 1f - initialProgress
+
                 try {
-                    isPredictiveBackActive = true
                     progressFlow.collect { event ->
-                        swipeEdge = event.swipeEdge
-                        backProgress.snapTo(event.progress)
+                        // Keep raw progress here; the fade threshold is based on it and
+                        // the layer applies the curve to the scale.
+                        backProgress.snapTo(
+                            initialProgress + remainingProgress * event.progress
+                        )
                     }
-                    backProgress.animateTo(
-                        targetValue = 1f,
-                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-                    )
-                    currentScreen = AppScreen.CONVERTER
+                    // Committed: let the fade-through finish before swapping screens.
+                    // Swapping at the current progress is the visible pop.
+                    if (backTransitionGeneration == generation) {
+                        backSettleTarget = 1f
+                    }
                 } catch (e: CancellationException) {
-                    backProgress.animateTo(
-                        targetValue = 0f,
-                        animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-                    )
-                } finally {
-                    isPredictiveBackActive = false
-                    backProgress.snapTo(0f)
+                    // Cancelled gestures cancel this coroutine, so settle from the effect above.
+                    // Ignore this if a newer gesture has already taken over.
+                    if (backTransitionGeneration == generation) {
+                        backSettleTarget = 0f
+                    }
                 }
             }
 
@@ -96,86 +178,89 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        // Render Converter screen when active or as back preview destination
-                        if (currentScreen == AppScreen.CONVERTER || isPredictiveBackActive) {
-                            val converterScale = if (isPredictiveBackActive) {
-                                0.92f + (0.08f * backProgress.value)
-                            } else {
-                                1f
-                            }
-                            val scrimAlpha = if (isPredictiveBackActive) {
-                                (1f - backProgress.value) * 0.25f
-                            } else {
-                                0f
-                            }
+                        // Keep the converter's state across Settings visits and compose it as
+                        // soon as a back gesture starts so the entering screen is ready.
+                        if (currentScreen == AppScreen.CONVERTER || isBackTransitionActive) {
+                            converterStateHolder.SaveableStateProvider("converter") {
+                                val isEntering =
+                                    currentScreen == AppScreen.SETTINGS && isBackTransitionActive
 
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .graphicsLayer {
-                                        scaleX = converterScale
-                                        scaleY = converterScale
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .graphicsLayer {
+                                            // Scale and fade the converter in after the
+                                            // fade-through mark, but only while Settings exits.
+                                            val progress = if (isEntering) backProgress.value else 0f
+                                            val scale = if (isEntering) {
+                                                backEnterScale(PredictiveBackEasing.transform(progress))
+                                            } else {
+                                                1f
+                                            }
+                                            alpha = if (isEntering) {
+                                                backEnterAlpha(progress)
+                                            } else {
+                                                1f
+                                            }
+                                            scaleX = scale
+                                            scaleY = scale
+                                            transformOrigin = TransformOrigin.Center
+                                        }
+                                ) {
+                                    Scaffold(
+                                        modifier = Modifier.fillMaxSize()
+                                    ) { innerPadding ->
+                                        PasteToMarkdownScreen(
+                                            settings = settings,
+                                            onOpenSettings = {
+                                                currentScreen = AppScreen.SETTINGS
+                                            },
+                                            modifier = Modifier.padding(innerPadding)
+                                        )
                                     }
-                            ) {
-                                Scaffold(
-                                    modifier = Modifier.fillMaxSize()
-                                ) { innerPadding ->
-                                    PasteToMarkdownScreen(
-                                        settings = settings,
-                                        onOpenSettings = { currentScreen = AppScreen.SETTINGS },
-                                        modifier = Modifier.padding(innerPadding)
-                                    )
-                                }
-
-                                if (scrimAlpha > 0f) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(MaterialTheme.colorScheme.scrim.copy(alpha = scrimAlpha))
-                                    )
                                 }
                             }
                         }
 
-                        // Render Settings screen when active
+                        // Render the Settings screen on top while it is open. It scales down
+                        // and fades out through the background during the first 35% of the
+                        // gesture.
                         if (currentScreen == AppScreen.SETTINGS) {
-                            val progress = backProgress.value
-                            val settingsScale = if (isPredictiveBackActive) {
-                                1f - (progress * 0.12f)
-                            } else {
-                                1f
-                            }
-                            val cornerRadius = if (isPredictiveBackActive) {
-                                (progress * 28).dp
-                            } else {
-                                0.dp
-                            }
-                            val sign = if (swipeEdge == BackEventCompat.EDGE_LEFT) 1 else -1
-                            val horizontalShift = if (isPredictiveBackActive) {
-                                (progress * 64 * sign).dp
-                            } else {
-                                0.dp
-                            }
-
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .offset(x = horizontalShift)
                                     .graphicsLayer {
-                                        scaleX = settingsScale
-                                        scaleY = settingsScale
+                                        val progress = if (isBackTransitionActive) {
+                                            backProgress.value
+                                        } else {
+                                            0f
+                                        }
+                                        val scale = if (isBackTransitionActive) {
+                                            backExitScale(PredictiveBackEasing.transform(progress))
+                                        } else {
+                                            1f
+                                        }
+                                        alpha = if (isBackTransitionActive) {
+                                            backExitAlpha(progress)
+                                        } else {
+                                            1f
+                                        }
+                                        scaleX = scale
+                                        scaleY = scale
+                                        transformOrigin = TransformOrigin.Center
                                     }
-                                    .shadow(
-                                        elevation = if (isPredictiveBackActive) (progress * 16).dp else 0.dp,
-                                        shape = RoundedCornerShape(cornerRadius)
-                                    )
-                                    .clip(RoundedCornerShape(cornerRadius))
                                     .background(MaterialTheme.colorScheme.background)
                             ) {
                                 SettingsScreen(
                                     settings = settings,
                                     repository = settingsRepository,
-                                    onNavigateBack = { currentScreen = AppScreen.CONVERTER }
+                                    onNavigateBack = {
+                                        // Restart any in-flight settle so this tap always
+                                        // animates the transition from its current state.
+                                        backTransitionGeneration++
+                                        isBackTransitionActive = true
+                                        backSettleTarget = 1f
+                                    }
                                 )
                             }
                         }
