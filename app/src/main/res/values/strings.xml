@@ -4,7 +4,18 @@
     <string name="category_appearance">Appearance</string>
     <string name="category_clipboard">Clipboard &amp; Automation</string>
     <string name="category_markdown">Markdown Formatting</string>
-    <string name="category_about">About &amp; Reset</string>
+    <string name="category_about">About</string>
+    <string name="category_reset">Reset</string>
+    <string name="settings_subtitle">Customize conversion and appearance</string>
+    <string name="action_navigate_back">Navigate back</string>
+    <string name="setting_theme_mode_desc">Select app color scheme</string>
+    <string name="setting_heading_style_desc">Prefix with # (ATX) or underline with === (Setext)</string>
+    <string name="setting_bullet_marker_desc">Symbol used for unordered list items</string>
+    <string name="setting_code_fence_desc">Fence delimiter for multiline code blocks</string>
+    <string name="setting_emphasis_marker_desc">Delimiter for italic and bold formatting</string>
+    <string name="theme_system">System</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
     <string name="setting_theme_mode">Theme</string>
     <string name="setting_dynamic_color">Dynamic Color</string>
     <string name="setting_dynamic_color_desc">Use wallpaper-based colors on Android 12+</string>
