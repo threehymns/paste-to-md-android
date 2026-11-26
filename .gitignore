@@ -22,3 +22,6 @@ debug.keystore
 *.jks.bak.*
 # Local scratch space for environment-specific notes and scripts.
 /.scratch/
+# AI Studio platform artifacts and build output cache.
+/.aistudio/
+/.build-outputs/
