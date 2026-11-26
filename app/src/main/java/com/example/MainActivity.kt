@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
@@ -45,9 +46,18 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 enum class AppScreen {
-    CONVERTER,
+    PASTE,
+    PREVIEW,
     SETTINGS
 }
+
+private val BackStackSaver = listSaver<List<AppScreen>, String>(
+    save = { stack -> stack.map { it.name } },
+    restore = { names ->
+        names.mapNotNull { runCatching { AppScreen.valueOf(it) }.getOrNull() }
+            .ifEmpty { listOf(AppScreen.PASTE) }
+    }
+)
 
 private val BackTransitionSpec = spring<Float>(
     stiffness = Spring.StiffnessMediumLow,
@@ -87,7 +97,108 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val settings by settingsRepository.settings.collectAsStateWithLifecycle()
-            var currentScreen by rememberSaveable { mutableStateOf(AppScreen.CONVERTER) }
+            var backStack by rememberSaveable(stateSaver = BackStackSaver) {
+                mutableStateOf(listOf(AppScreen.PASTE))
+            }
+            var markdownText by rememberSaveable { mutableStateOf("") }
+            var hasAutoPastedOnLaunch by rememberSaveable { mutableStateOf(false) }
+            var isConverting by remember { mutableStateOf(false) }
+
+            val context = LocalContext.current
+            val coroutineScope = rememberCoroutineScope()
+            val clipboardManager = remember {
+                context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            }
+
+            val saveFileLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.CreateDocument("text/markdown")
+            ) { uri: Uri? ->
+                uri?.let {
+                    coroutineScope.launch(Dispatchers.IO) {
+                        try {
+                            context.contentResolver.openOutputStream(it)?.use { outputStream ->
+                                outputStream.write(markdownText.toByteArray())
+                            }
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "File saved successfully", Toast.LENGTH_SHORT).show()
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                Toast.makeText(context, "Error saving file", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Warm up the converter in the background during idle time after the first frame paints
+            LaunchedEffect(Unit) {
+                withContext(Dispatchers.Default) {
+                    MarkdownConverter.convert("", settings)
+                }
+            }
+
+            fun copyToClipboard(textToCopy: String = markdownText, showToast: Boolean = true) {
+                val clip = ClipData.newPlainText("Markdown", textToCopy)
+                clipboardManager.setPrimaryClip(clip)
+                if (showToast) {
+                    Toast.makeText(context, "Markdown copied to clipboard", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            fun pasteFromClipboard(navigateToPreview: Boolean) {
+                if (!clipboardManager.hasPrimaryClip()) {
+                    Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                val clip = clipboardManager.primaryClip ?: return
+                if (clip.itemCount == 0) return
+
+                val item = clip.getItemAt(0)
+                val html = item.htmlText
+                val text = item.text?.toString()
+
+                if (html != null) {
+                    isConverting = true
+                    coroutineScope.launch {
+                        val converted = withContext(Dispatchers.Default) {
+                            try {
+                                MarkdownConverter.convert(html, settings)
+                            } catch (e: Exception) {
+                                "Error converting HTML: ${e.message}"
+                            }
+                        }
+                        markdownText = converted
+                        isConverting = false
+
+                        if (settings.autoCopyOnConvert) {
+                            val autoClip = ClipData.newPlainText("Markdown", converted)
+                            clipboardManager.setPrimaryClip(autoClip)
+                            Toast.makeText(context, "Converted and copied to clipboard!", Toast.LENGTH_SHORT).show()
+                        }
+                        if (navigateToPreview && backStack.last() == AppScreen.PASTE) {
+                            backStack = backStack + AppScreen.PREVIEW
+                        }
+                    }
+                } else if (!text.isNullOrEmpty()) {
+                    markdownText = text
+                    if (settings.autoCopyOnConvert) {
+                        copyToClipboard(textToCopy = text, showToast = true)
+                    }
+                    if (navigateToPreview && backStack.last() == AppScreen.PASTE) {
+                        backStack = backStack + AppScreen.PREVIEW
+                    }
+                } else {
+                    Toast.makeText(context, "No text or HTML found in clipboard", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            LaunchedEffect(settings.autoPasteOnLaunch) {
+                if (settings.autoPasteOnLaunch && !hasAutoPastedOnLaunch && backStack.last() == AppScreen.PASTE && markdownText.isEmpty()) {
+                    hasAutoPastedOnLaunch = true
+                    pasteFromClipboard(navigateToPreview = true)
+                }
+            }
 
             val backProgress = remember { Animatable(0f) }
             var isBackTransitionActive by remember { mutableStateOf(false) }
@@ -95,15 +206,31 @@ class MainActivity : ComponentActivity() {
             var backSettleTarget by remember { mutableStateOf<Float?>(null) }
             // Invalidates a settle animation that is finishing as a new gesture takes over.
             var backTransitionGeneration by remember { mutableIntStateOf(0) }
-            val converterStateHolder = rememberSaveableStateHolder()
+            var resetBackProgressBeforeAnimate by remember { mutableStateOf(false) }
+            val screenStateHolder = rememberSaveableStateHolder()
+
+            fun navigateBack() {
+                if (backStack.size <= 1) return
+                if (isBackTransitionActive && backSettleTarget == 1f) return
+                val wasActive = isBackTransitionActive
+                backTransitionGeneration++
+                resetBackProgressBeforeAnimate = !wasActive
+                isBackTransitionActive = true
+                backSettleTarget = 1f
+            }
 
             // The predictive back coroutine is cancelled when a gesture is cancelled, so the
             // return animation has to run outside of it. Both completion and cancellation feed
             // this effect, which then owns the transition until it settles. The generation is a
-            // key too so the toolbar back can restart an in-flight settle.
+            // key too so programmatic back can restart an in-flight settle.
             LaunchedEffect(backSettleTarget, backTransitionGeneration) {
                 val target = backSettleTarget ?: return@LaunchedEffect
                 val generation = backTransitionGeneration
+
+                if (resetBackProgressBeforeAnimate) {
+                    resetBackProgressBeforeAnimate = false
+                    backProgress.snapTo(0f)
+                }
 
                 backProgress.animateTo(
                     targetValue = target,
@@ -121,30 +248,35 @@ class MainActivity : ComponentActivity() {
                 // A new gesture may have started while the final snap was applying.
                 if (backTransitionGeneration != generation) return@LaunchedEffect
 
-                if (target == 1f) {
-                    currentScreen = AppScreen.CONVERTER
+                if (target == 1f && backStack.size > 1) {
+                    val poppedScreen = backStack.last()
+                    backStack = backStack.dropLast(1)
+                    screenStateHolder.removeState(poppedScreen)
+                    if (poppedScreen == AppScreen.PREVIEW) {
+                        markdownText = ""
+                    }
                 }
                 isBackTransitionActive = false
-                if (target == 1f) {
-                    // Reset progress after the screen swap. No in-app back gesture can start
-                    // while the converter is showing, so this cannot interfere with a gesture.
+                backSettleTarget = null
+                if (target == 1f && backTransitionGeneration == generation) {
                     backProgress.snapTo(0f)
                 }
-
-                // The toolbar back can restart the settle while the final reset is applying.
-                if (backTransitionGeneration != generation) return@LaunchedEffect
-                backSettleTarget = null
             }
 
-            PredictiveBackHandler(enabled = currentScreen == AppScreen.SETTINGS) { progressFlow ->
+            PredictiveBackHandler(enabled = backStack.size > 1) { progressFlow ->
+                val wasActive = isBackTransitionActive
                 backTransitionGeneration++
                 val generation = backTransitionGeneration
                 backSettleTarget = null
+                resetBackProgressBeforeAnimate = false
                 isBackTransitionActive = true
 
                 // If a settle was still running, continue from its current visual state
                 // instead of snapping back to the start of the transition.
-                val initialProgress = backProgress.value
+                val initialProgress = if (wasActive) backProgress.value else 0f
+                if (!wasActive) {
+                    backProgress.snapTo(0f)
+                }
                 val remainingProgress = 1f - initialProgress
 
                 try {
@@ -169,6 +301,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
+            val topScreen = backStack.last()
+            val previousScreen = backStack.getOrNull(backStack.lastIndex - 1)
+            val visibleScreens = remember(topScreen, previousScreen, isBackTransitionActive) {
+                if (isBackTransitionActive && previousScreen != null) {
+                    listOf(previousScreen, topScreen)
+                } else {
+                    listOf(topScreen)
+                }
+            }
+
             MyApplicationTheme(
                 themeMode = settings.themeMode,
                 dynamicColor = settings.dynamicColor
@@ -178,27 +320,26 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     Box(modifier = Modifier.fillMaxSize()) {
-                        // Keep the converter's state across Settings visits and compose it as
-                        // soon as a back gesture starts so the entering screen is ready.
-                        if (currentScreen == AppScreen.CONVERTER || isBackTransitionActive) {
-                            converterStateHolder.SaveableStateProvider("converter") {
-                                val isEntering =
-                                    currentScreen == AppScreen.SETTINGS && isBackTransitionActive
-
+                        visibleScreens.forEach { screen ->
+                            key(screen) {
+                                val isTop = screen == topScreen
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .graphicsLayer {
-                                            // Scale and fade the converter in after the
-                                            // fade-through mark, but only while Settings exits.
-                                            val progress = if (isEntering) backProgress.value else 0f
-                                            val scale = if (isEntering) {
-                                                backEnterScale(PredictiveBackEasing.transform(progress))
+                                            val progress = if (isBackTransitionActive && !resetBackProgressBeforeAnimate) {
+                                                backProgress.value
+                                            } else {
+                                                0f
+                                            }
+                                            val scale = if (isBackTransitionActive) {
+                                                val eased = PredictiveBackEasing.transform(progress)
+                                                if (isTop) backExitScale(eased) else backEnterScale(eased)
                                             } else {
                                                 1f
                                             }
-                                            alpha = if (isEntering) {
-                                                backEnterAlpha(progress)
+                                            alpha = if (isBackTransitionActive) {
+                                                if (isTop) backExitAlpha(progress) else backEnterAlpha(progress)
                                             } else {
                                                 1f
                                             }
@@ -206,62 +347,55 @@ class MainActivity : ComponentActivity() {
                                             scaleY = scale
                                             transformOrigin = TransformOrigin.Center
                                         }
+                                        .background(MaterialTheme.colorScheme.background)
                                 ) {
-                                    Scaffold(
-                                        modifier = Modifier.fillMaxSize()
-                                    ) { innerPadding ->
-                                        PasteToMarkdownScreen(
-                                            settings = settings,
-                                            onOpenSettings = {
-                                                currentScreen = AppScreen.SETTINGS
-                                            },
-                                            modifier = Modifier.padding(innerPadding)
-                                        )
+                                    screenStateHolder.SaveableStateProvider(screen) {
+                                        when (screen) {
+                                            AppScreen.PASTE -> {
+                                                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                                                    PasteToMarkdownScreen(
+                                                        isConverting = isConverting,
+                                                        onPaste = { pasteFromClipboard(navigateToPreview = true) },
+                                                        onOpenSettings = {
+                                                            if (!isBackTransitionActive) {
+                                                                backStack = backStack + AppScreen.SETTINGS
+                                                            }
+                                                        },
+                                                        modifier = Modifier.padding(innerPadding)
+                                                    )
+                                                }
+                                            }
+
+                                            AppScreen.PREVIEW -> {
+                                                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                                                    MarkdownPreviewScreen(
+                                                        markdownText = markdownText,
+                                                        isConverting = isConverting,
+                                                        onMarkdownChange = { markdownText = it },
+                                                        onClear = { navigateBack() },
+                                                        onPasteAgain = { pasteFromClipboard(navigateToPreview = false) },
+                                                        onSaveFile = { saveFileLauncher.launch("converted.md") },
+                                                        onCopy = { copyToClipboard() },
+                                                        onOpenSettings = {
+                                                            if (!isBackTransitionActive) {
+                                                                backStack = backStack + AppScreen.SETTINGS
+                                                            }
+                                                        },
+                                                        modifier = Modifier.padding(innerPadding)
+                                                    )
+                                                }
+                                            }
+
+                                            AppScreen.SETTINGS -> {
+                                                SettingsScreen(
+                                                    settings = settings,
+                                                    repository = settingsRepository,
+                                                    onNavigateBack = { navigateBack() }
+                                                )
+                                            }
+                                        }
                                     }
                                 }
-                            }
-                        }
-
-                        // Render the Settings screen on top while it is open. It scales down
-                        // and fades out through the background during the first 35% of the
-                        // gesture.
-                        if (currentScreen == AppScreen.SETTINGS) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .graphicsLayer {
-                                        val progress = if (isBackTransitionActive) {
-                                            backProgress.value
-                                        } else {
-                                            0f
-                                        }
-                                        val scale = if (isBackTransitionActive) {
-                                            backExitScale(PredictiveBackEasing.transform(progress))
-                                        } else {
-                                            1f
-                                        }
-                                        alpha = if (isBackTransitionActive) {
-                                            backExitAlpha(progress)
-                                        } else {
-                                            1f
-                                        }
-                                        scaleX = scale
-                                        scaleY = scale
-                                        transformOrigin = TransformOrigin.Center
-                                    }
-                                    .background(MaterialTheme.colorScheme.background)
-                            ) {
-                                SettingsScreen(
-                                    settings = settings,
-                                    repository = settingsRepository,
-                                    onNavigateBack = {
-                                        // Restart any in-flight settle so this tap always
-                                        // animates the transition from its current state.
-                                        backTransitionGeneration++
-                                        isBackTransitionActive = true
-                                        backSettleTarget = 1f
-                                    }
-                                )
                             }
                         }
                     }
@@ -271,278 +405,209 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasteToMarkdownScreen(
-    settings: AppSettings = AppSettings(),
+    isConverting: Boolean = false,
+    onPaste: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    var markdownText by rememberSaveable { mutableStateOf("") }
-    var isConverting by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-
-    val saveFileLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("text/markdown")
-    ) { uri: Uri? ->
-        uri?.let {
-            coroutineScope.launch(Dispatchers.IO) {
-                try {
-                    context.contentResolver.openOutputStream(it)?.use { outputStream ->
-                        outputStream.write(markdownText.toByteArray())
-                    }
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "File saved successfully", Toast.LENGTH_SHORT).show()
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "Error saving file", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-        }
-    }
-
-    val clipboardManager = remember {
-        context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    }
-
-    // Warm up the converter in the background during idle time after the first frame paints
-    LaunchedEffect(Unit) {
-        withContext(Dispatchers.Default) {
-            MarkdownConverter.convert("", settings)
-        }
-    }
-
-    fun copyToClipboard(showToast: Boolean = true) {
-        val clip = ClipData.newPlainText("Markdown", markdownText)
-        clipboardManager.setPrimaryClip(clip)
-        if (showToast) {
-            Toast.makeText(context, "Markdown copied to clipboard", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    fun pasteFromClipboard() {
-        if (!clipboardManager.hasPrimaryClip()) {
-            Toast.makeText(context, "Clipboard is empty", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val clip = clipboardManager.primaryClip ?: return
-        if (clip.itemCount == 0) return
-
-        val item = clip.getItemAt(0)
-        val html = item.htmlText
-        val text = item.text?.toString()
-
-        if (html != null) {
-            isConverting = true
-            coroutineScope.launch {
-                val converted = withContext(Dispatchers.Default) {
-                    try {
-                        MarkdownConverter.convert(html, settings)
-                    } catch (e: Exception) {
-                        "Error converting HTML: ${e.message}"
-                    }
-                }
-                markdownText = converted
-                isConverting = false
-
-                if (settings.autoCopyOnConvert) {
-                    val autoClip = ClipData.newPlainText("Markdown", converted)
-                    clipboardManager.setPrimaryClip(autoClip)
-                    Toast.makeText(context, "Converted and copied to clipboard!", Toast.LENGTH_SHORT).show()
-                }
-            }
-        } else if (text != null) {
-            markdownText = text
-            if (settings.autoCopyOnConvert) {
-                copyToClipboard(showToast = true)
-            }
-        } else {
-            Toast.makeText(context, "No text or HTML found in clipboard", Toast.LENGTH_SHORT).show()
-        }
-    }
-
-    LaunchedEffect(settings.autoPasteOnLaunch) {
-        if (settings.autoPasteOnLaunch && markdownText.isEmpty()) {
-            pasteFromClipboard()
-        }
-    }
-
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(horizontal = 16.dp, vertical = 8.dp)
     ) {
-        if (markdownText.isEmpty()) {
-            Row(
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp, end = 4.dp),
+            horizontalArrangement = Arrangement.End
+        ) {
+            IconButton(
+                onClick = onOpenSettings,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp, end = 4.dp),
-                horizontalArrangement = Arrangement.End
+                    .size(52.dp)
+                    .testTag("settings_button")
             ) {
-                IconButton(
-                    onClick = onOpenSettings,
-                    modifier = Modifier
-                        .size(52.dp)
-                        .testTag("settings_button")
-                ) {
-                    Icon(
-                        imageVector = AppIcons.Settings,
-                        contentDescription = stringResource(R.string.settings_title),
-                        modifier = Modifier.size(28.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Icon(
-                        imageVector = AppIcons.ContentPaste,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = "Paste rich text here",
-                        style = MaterialTheme.typography.headlineSmall,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "Copy formatted text from any app and paste it to get clean Markdown.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(horizontal = 32.dp)
-                    )
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(
-                        onClick = { pasteFromClipboard() },
-                        enabled = !isConverting,
-                        modifier = Modifier
-                            .fillMaxWidth(0.8f)
-                            .height(56.dp)
-                            .testTag("paste_button")
-                    ) {
-                        Icon(AppIcons.ContentPaste, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
-                        Text("Paste", style = com.example.ui.theme.EmphasizedTypography.titleMedium)
-                    }
-                }
-            }
-        } else {
-            TextField(
-                value = markdownText,
-                onValueChange = { markdownText = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .testTag("markdown_text_field"),
-                placeholder = { 
-                    Text(
-                        "Pasted HTML will be converted to Markdown here...",
-                        style = MaterialTheme.typography.bodyLarge
-                    ) 
-                },
-                textStyle = MaterialTheme.typography.bodyLarge,
-                visualTransformation = MarkdownSyntaxHighlighter(MaterialTheme.colorScheme),
-                shape = RoundedCornerShape(32.dp),
-                colors = TextFieldDefaults.colors(
-                    focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                    unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                    disabledIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
-                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                Icon(
+                    imageVector = AppIcons.Settings,
+                    contentDescription = stringResource(R.string.settings_title),
+                    modifier = Modifier.size(28.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            )
+            }
+        }
 
-            Spacer(modifier = Modifier.height(20.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                FilledTonalIconButton(
-                    onClick = { markdownText = "" },
-                    enabled = markdownText.isNotEmpty(),
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                        contentColor = MaterialTheme.colorScheme.onErrorContainer
-                    ),
-                    modifier = Modifier
-                        .size(52.dp)
-                        .testTag("clear_button")
-                ) {
-                    Icon(AppIcons.Delete, contentDescription = "Clear")
-                }
-
-                FilledTonalButton(
-                    onClick = { pasteFromClipboard() },
+                Icon(
+                    imageVector = AppIcons.ContentPaste,
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = "Paste rich text here",
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "Copy formatted text from any app and paste it to get clean Markdown.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 32.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Button(
+                    onClick = onPaste,
                     enabled = !isConverting,
-                    contentPadding = PaddingValues(horizontal = 12.dp),
                     modifier = Modifier
-                        .weight(1f)
-                        .height(52.dp)
-                        .testTag("paste_again_button"),
-                    shape = RoundedCornerShape(16.dp)
+                        .fillMaxWidth(0.8f)
+                        .height(56.dp)
+                        .testTag("paste_button")
                 ) {
-                    Icon(AppIcons.ContentPaste, contentDescription = "Paste")
-                    Spacer(Modifier.width(6.dp))
-                    Text(
-                        text = "Paste Again",
-                        style = com.example.ui.theme.EmphasizedTypography.labelLarge,
-                        maxLines = 1
-                    )
-                }
-
-                FilledTonalIconButton(
-                    onClick = { saveFileLauncher.launch("converted.md") },
-                    enabled = markdownText.isNotEmpty(),
-                    modifier = Modifier
-                        .size(52.dp)
-                        .testTag("save_file_button")
-                ) {
-                    Icon(AppIcons.Download, contentDescription = "Save file")
-                }
-
-                FilledTonalIconButton(
-                    onClick = onOpenSettings,
-                    modifier = Modifier
-                        .size(52.dp)
-                        .testTag("settings_button")
-                ) {
-                    Icon(
-                        imageVector = AppIcons.Settings,
-                        contentDescription = stringResource(R.string.settings_title)
-                    )
+                    Icon(AppIcons.ContentPaste, contentDescription = null, modifier = Modifier.padding(end = 8.dp))
+                    Text("Paste", style = com.example.ui.theme.EmphasizedTypography.titleMedium)
                 }
             }
+        }
 
-            Spacer(modifier = Modifier.height(12.dp))
+        if (isConverting) {
+            Spacer(modifier = Modifier.height(16.dp))
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+        }
+    }
+}
 
-            Button(
-                onClick = { copyToClipboard() },
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun MarkdownPreviewScreen(
+    markdownText: String,
+    isConverting: Boolean = false,
+    onMarkdownChange: (String) -> Unit,
+    onClear: () -> Unit,
+    onPasteAgain: () -> Unit,
+    onSaveFile: () -> Unit,
+    onCopy: () -> Unit,
+    onOpenSettings: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+    ) {
+        TextField(
+            value = markdownText,
+            onValueChange = onMarkdownChange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .testTag("markdown_text_field"),
+            placeholder = {
+                Text(
+                    "Pasted HTML will be converted to Markdown here...",
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            },
+            textStyle = MaterialTheme.typography.bodyLarge,
+            visualTransformation = MarkdownSyntaxHighlighter(MaterialTheme.colorScheme),
+            shape = RoundedCornerShape(32.dp),
+            colors = TextFieldDefaults.colors(
+                focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                disabledIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            )
+        )
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            FilledTonalIconButton(
+                onClick = onClear,
+                enabled = markdownText.isNotEmpty(),
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
+                ),
+                modifier = Modifier
+                    .size(52.dp)
+                    .testTag("clear_button")
+            ) {
+                Icon(AppIcons.Delete, contentDescription = "Clear")
+            }
+
+            FilledTonalButton(
+                onClick = onPasteAgain,
+                enabled = !isConverting,
+                contentPadding = PaddingValues(horizontal = 12.dp),
+                modifier = Modifier
+                    .weight(1f)
+                    .height(52.dp)
+                    .testTag("paste_again_button"),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Icon(AppIcons.ContentPaste, contentDescription = "Paste")
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = "Paste Again",
+                    style = com.example.ui.theme.EmphasizedTypography.labelLarge,
+                    maxLines = 1
+                )
+            }
+
+            FilledTonalIconButton(
+                onClick = onSaveFile,
                 enabled = markdownText.isNotEmpty(),
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(64.dp)
-                    .testTag("copy_button"),
-                shape = RoundedCornerShape(20.dp)
+                    .size(52.dp)
+                    .testTag("save_file_button")
             ) {
-                Icon(AppIcons.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(28.dp))
-                Spacer(Modifier.width(12.dp))
-                Text("Copy Markdown", style = com.example.ui.theme.EmphasizedTypography.titleLarge)
+                Icon(AppIcons.Download, contentDescription = "Save file")
             }
+
+            FilledTonalIconButton(
+                onClick = onOpenSettings,
+                modifier = Modifier
+                    .size(52.dp)
+                    .testTag("settings_button")
+            ) {
+                Icon(
+                    imageVector = AppIcons.Settings,
+                    contentDescription = stringResource(R.string.settings_title)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Button(
+            onClick = onCopy,
+            enabled = markdownText.isNotEmpty(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(64.dp)
+                .testTag("copy_button"),
+            shape = RoundedCornerShape(20.dp)
+        ) {
+            Icon(AppIcons.ContentCopy, contentDescription = "Copy", modifier = Modifier.size(28.dp))
+            Spacer(Modifier.width(12.dp))
+            Text("Copy Markdown", style = com.example.ui.theme.EmphasizedTypography.titleLarge)
         }
 
         if (isConverting) {
