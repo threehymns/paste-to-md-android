@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -581,7 +582,10 @@ fun MarkdownPreviewScreen(
     modifier: Modifier = Modifier
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    val syntaxHighlighter = remember(colorScheme) { MarkdownSyntaxHighlighter(colorScheme) }
+    val bodyTextStyle = MaterialTheme.typography.bodyLarge
+    val syntaxHighlighter = remember(colorScheme, bodyTextStyle.fontSize) {
+        MarkdownSyntaxHighlighter(colorScheme, bodyTextStyle.fontSize)
+    }
 
     Column(
         modifier = modifier
@@ -598,10 +602,10 @@ fun MarkdownPreviewScreen(
             placeholder = {
                 Text(
                     "Pasted HTML will be converted to Markdown here...",
-                    style = MaterialTheme.typography.bodyLarge
+                    style = bodyTextStyle
                 )
             },
-            textStyle = MaterialTheme.typography.bodyLarge,
+            textStyle = bodyTextStyle.copy(lineHeight = TextUnit.Unspecified),
             visualTransformation = syntaxHighlighter,
             shape = RoundedCornerShape(32.dp),
             colors = TextFieldDefaults.colors(
