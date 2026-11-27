@@ -13,8 +13,8 @@ android {
     applicationId = "com.aistudio.pastetomarkdown.xzyqwe"
     minSdk = 26
     targetSdk = 36
-    versionCode = (findProperty("versionCode") as String?)?.toIntOrNull() ?: 1
-    versionName = (findProperty("versionName") as String?) ?: "0.0.1"
+    versionCode = (findProperty("versionCode") as String?)?.toIntOrNull() ?: 3
+    versionName = (findProperty("versionName") as String?) ?: "0.0.3"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     resourceConfigurations += listOf("en")

@@ -2,22 +2,56 @@ package com.example.ui.settings
 
 import android.os.Build
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MediumFlexibleTopAppBar
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedListItem
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTopAppBarState
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.BuildConfig
 import com.example.R
-import com.example.data.*
+import com.example.data.AppSettings
+import com.example.data.AppSettingsRepository
+import com.example.data.BulletMarker
+import com.example.data.CodeFenceStyle
+import com.example.data.EmphasisMarker
+import com.example.data.HeadingStyle
+import com.example.data.ThemeMode
 import com.example.ui.AppIcons
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
@@ -30,6 +64,8 @@ fun SettingsScreen(
 ) {
     var showResetConfirmDialog by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(rememberTopAppBarState())
+    val layoutDirection = LocalLayoutDirection.current
+    val supportsDynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     // The reset dialog must dismiss before Settings pops.
     BackHandler(enabled = showResetConfirmDialog) { showResetConfirmDialog = false }
@@ -38,14 +74,22 @@ fun SettingsScreen(
         modifier = modifier
             .fillMaxSize()
             .nestedScroll(scrollBehavior.nestedScrollConnection),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
         topBar = {
             MediumFlexibleTopAppBar(
                 title = { Text(text = stringResource(R.string.settings_title)) },
                 subtitle = { Text(text = stringResource(R.string.settings_subtitle)) },
                 navigationIcon = {
-                    IconButton(
+                    FilledTonalIconButton(
                         onClick = onNavigateBack,
-                        modifier = Modifier.testTag("settings_back_button")
+                        shapes = IconButtonDefaults.shapes(),
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        ),
+                        modifier = Modifier
+                            .padding(start = 4.dp)
+                            .testTag("settings_back_button")
                     ) {
                         Icon(
                             imageVector = AppIcons.ArrowBack,
@@ -53,26 +97,38 @@ fun SettingsScreen(
                         )
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                ),
                 scrollBehavior = scrollBehavior
             )
         }
     ) { innerPadding ->
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding),
-            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+            modifier = Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            contentPadding = PaddingValues(
+                start = innerPadding.calculateStartPadding(layoutDirection) + 16.dp,
+                top = innerPadding.calculateTopPadding() + 8.dp,
+                end = innerPadding.calculateEndPadding(layoutDirection) + 16.dp,
+                bottom = innerPadding.calculateBottomPadding() + 24.dp
+            ),
+            verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             // 1. Appearance
-            item {
+            item(key = "section_appearance") {
+                val itemCount = if (supportsDynamicColor) 2 else 1
                 SettingsSection(title = stringResource(R.string.category_appearance)) {
                     SettingsChoiceTile(
                         title = stringResource(R.string.setting_theme_mode),
-                        subtitle = stringResource(R.string.setting_theme_mode_desc)
+                        subtitle = stringResource(R.string.setting_theme_mode_desc),
+                        leadingIcon = AppIcons.BrightnessAuto,
+                        index = 0,
+                        count = itemCount
                     ) {
                         ConnectedChoiceRow(
-                            options = ThemeMode.values().toList(),
+                            options = ThemeMode.entries,
                             selected = settings.themeMode,
                             onSelect = { repository.setThemeMode(it) },
                             labelFor = {
@@ -93,14 +149,15 @@ fun SettingsScreen(
                         )
                     }
 
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                        ExpressiveDivider()
+                    if (supportsDynamicColor) {
                         SettingsSwitchTile(
                             title = stringResource(R.string.setting_dynamic_color),
                             subtitle = stringResource(R.string.setting_dynamic_color_desc),
                             checked = settings.dynamicColor,
                             onCheckedChange = { repository.setDynamicColor(it) },
                             leadingIcon = AppIcons.Palette,
+                            index = 1,
+                            count = itemCount,
                             modifier = Modifier.testTag("setting_dynamic_color_switch")
                         )
                     }
@@ -108,7 +165,7 @@ fun SettingsScreen(
             }
 
             // 2. Clipboard & Automation
-            item {
+            item(key = "section_clipboard") {
                 SettingsSection(title = stringResource(R.string.category_clipboard)) {
                     SettingsSwitchTile(
                         title = stringResource(R.string.setting_auto_paste),
@@ -116,10 +173,10 @@ fun SettingsScreen(
                         checked = settings.autoPasteOnLaunch,
                         onCheckedChange = { repository.setAutoPasteOnLaunch(it) },
                         leadingIcon = AppIcons.ContentPaste,
+                        index = 0,
+                        count = 2,
                         modifier = Modifier.testTag("setting_auto_paste_switch")
                     )
-
-                    ExpressiveDivider()
 
                     SettingsSwitchTile(
                         title = stringResource(R.string.setting_auto_copy),
@@ -127,82 +184,81 @@ fun SettingsScreen(
                         checked = settings.autoCopyOnConvert,
                         onCheckedChange = { repository.setAutoCopyOnConvert(it) },
                         leadingIcon = AppIcons.ContentCopy,
+                        index = 1,
+                        count = 2,
                         modifier = Modifier.testTag("setting_auto_copy_switch")
                     )
                 }
             }
 
             // 3. Markdown Formatting
-            item {
+            item(key = "section_markdown") {
                 SettingsSection(title = stringResource(R.string.category_markdown)) {
                     SettingsChoiceTile(
                         title = stringResource(R.string.setting_heading_style),
-                        subtitle = stringResource(R.string.setting_heading_style_desc)
+                        subtitle = stringResource(R.string.setting_heading_style_desc),
+                        leadingIcon = AppIcons.Title,
+                        index = 0,
+                        count = 5
                     ) {
                         ConnectedChoiceRow(
-                            options = HeadingStyle.values().toList(),
+                            options = HeadingStyle.entries,
                             selected = settings.headingStyle,
                             onSelect = { repository.setHeadingStyle(it) },
                             labelFor = { if (it == HeadingStyle.ATX) "ATX (#)" else "Setext (===)" },
-                            iconFor = { AppIcons.Title },
                             modifier = Modifier.testTag("setting_heading_style_segmented")
                         )
                     }
 
-                    ExpressiveDivider()
-
                     SettingsChoiceTile(
                         title = stringResource(R.string.setting_bullet_marker),
-                        subtitle = stringResource(R.string.setting_bullet_marker_desc)
+                        subtitle = stringResource(R.string.setting_bullet_marker_desc),
+                        leadingIcon = AppIcons.FormatListBulleted,
+                        index = 1,
+                        count = 5
                     ) {
                         ConnectedChoiceRow(
-                            options = BulletMarker.values().toList(),
+                            options = BulletMarker.entries,
                             selected = settings.bulletMarker,
                             onSelect = { repository.setBulletMarker(it) },
                             labelFor = { it.title },
-                            iconFor = { AppIcons.FormatListBulleted },
                             modifier = Modifier.testTag("setting_bullet_marker_segmented")
                         )
                     }
 
-                    ExpressiveDivider()
-
                     SettingsChoiceTile(
                         title = stringResource(R.string.setting_code_fence),
-                        subtitle = stringResource(R.string.setting_code_fence_desc)
+                        subtitle = stringResource(R.string.setting_code_fence_desc),
+                        leadingIcon = AppIcons.DataObject,
+                        index = 2,
+                        count = 5
                     ) {
                         ConnectedChoiceRow(
-                            options = CodeFenceStyle.values().toList(),
+                            options = CodeFenceStyle.entries,
                             selected = settings.codeFenceStyle,
                             onSelect = { repository.setCodeFenceStyle(it) },
                             labelFor = { it.title },
-                            iconFor = { AppIcons.DataObject },
                             modifier = Modifier.testTag("setting_code_fence_segmented")
                         )
                     }
 
-                    ExpressiveDivider()
-
                     SettingsChoiceTile(
                         title = stringResource(R.string.setting_emphasis_marker),
-                        subtitle = stringResource(R.string.setting_emphasis_marker_desc)
+                        subtitle = stringResource(R.string.setting_emphasis_marker_desc),
+                        leadingIcon = AppIcons.FormatItalic,
+                        index = 3,
+                        count = 5
                     ) {
                         ConnectedChoiceRow(
-                            options = EmphasisMarker.values().toList(),
+                            options = EmphasisMarker.entries,
                             selected = settings.emphasisMarker,
                             onSelect = { repository.setEmphasisMarker(it) },
                             labelFor = {
                                 if (it == EmphasisMarker.ASTERISK) "* Asterisk" else "_ Underscore"
                             },
-                            iconFor = {
-                                if (it == EmphasisMarker.ASTERISK) AppIcons.FormatBold
-                                else AppIcons.FormatItalic
-                            },
                             modifier = Modifier.testTag("setting_emphasis_marker_segmented")
                         )
                     }
-
-                    ExpressiveDivider()
 
                     SettingsSwitchTile(
                         title = stringResource(R.string.setting_soft_breaks),
@@ -210,69 +266,77 @@ fun SettingsScreen(
                         checked = settings.preserveLineBreaks,
                         onCheckedChange = { repository.setPreserveLineBreaks(it) },
                         leadingIcon = AppIcons.WrapText,
+                        index = 4,
+                        count = 5,
                         modifier = Modifier.testTag("setting_soft_breaks_switch")
                     )
                 }
             }
 
             // 4. About (separated from destructive action)
-            item {
+            item(key = "section_about") {
                 SettingsSection(title = stringResource(R.string.category_about)) {
-                    ListItem(
-                        leadingContent = {
-                            Icon(
-                                imageVector = AppIcons.Info,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
+                    Surface(
+                        shape = ListItemDefaults.segmentedShapes(index = 0, count = 1).shape,
+                        color = MaterialTheme.colorScheme.surfaceBright,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        ListItem(
+                            leadingContent = {
+                                SettingsIconBadge(
+                                    icon = AppIcons.Info,
+                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            },
+                            supportingContent = {
+                                Text(
+                                    text = stringResource(R.string.app_about_desc),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            },
+                            trailingContent = {
+                                Surface(
+                                    shape = CircleShape,
+                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                    modifier = Modifier.testTag("app_version_chip")
+                                ) {
+                                    Text(
+                                        text = "v${BuildConfig.VERSION_NAME}",
+                                        style = MaterialTheme.typography.labelMediumEmphasized,
+                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                    )
+                                }
+                            },
+                            colors = ListItemDefaults.colors(
+                                containerColor = Color.Transparent
                             )
-                        },
-                        headlineContent = {
+                        ) {
                             Text(
                                 text = stringResource(R.string.app_name),
-                                style = MaterialTheme.typography.titleMedium
+                                style = MaterialTheme.typography.titleMediumEmphasized
                             )
-                        },
-                        supportingContent = {
-                            Text(
-                                text = stringResource(R.string.app_about_desc),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        },
-                        trailingContent = {
-                            Surface(
-                                shape = MaterialTheme.shapes.large,
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                modifier = Modifier.testTag("app_version_chip")
-                            ) {
-                                Text(
-                                    text = "v${BuildConfig.VERSION_NAME}",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                )
-                            }
                         }
-                    )
+                    }
                 }
             }
 
-            // 5. Reset (own section, separated from About)
-            item {
+            // 5. Reset (own section, isolated destructive action)
+            item(key = "section_reset") {
                 SettingsSection(title = stringResource(R.string.category_reset)) {
-                    ListItem(
+                    SegmentedListItem(
+                        onClick = { showResetConfirmDialog = true },
+                        shapes = ListItemDefaults.segmentedShapes(index = 0, count = 1),
+                        colors = ListItemDefaults.segmentedColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceBright
+                        ),
                         leadingContent = {
-                            Icon(
-                                imageVector = AppIcons.Refresh,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error
-                            )
-                        },
-                        headlineContent = {
-                            Text(
-                                text = stringResource(R.string.setting_reset_defaults),
-                                style = MaterialTheme.typography.titleMedium,
-                                color = MaterialTheme.colorScheme.error
+                            SettingsIconBadge(
+                                icon = AppIcons.Refresh,
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
                             )
                         },
                         supportingContent = {
@@ -284,17 +348,15 @@ fun SettingsScreen(
                         },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable(
-                                role = Role.Button,
-                                onClick = { showResetConfirmDialog = true }
-                            )
                             .testTag("setting_reset_defaults_tile")
-                    )
+                    ) {
+                        Text(
+                            text = stringResource(R.string.setting_reset_defaults),
+                            style = MaterialTheme.typography.titleMediumEmphasized,
+                            color = MaterialTheme.colorScheme.error
+                        )
+                    }
                 }
-            }
-
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
@@ -302,18 +364,26 @@ fun SettingsScreen(
     if (showResetConfirmDialog) {
         AlertDialog(
             onDismissRequest = { showResetConfirmDialog = false },
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             icon = {
-                Icon(
-                    imageVector = AppIcons.Refresh,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error
+                SettingsIconBadge(
+                    icon = AppIcons.Refresh,
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer
                 )
             },
             title = {
-                Text(text = stringResource(R.string.dialog_reset_title))
+                Text(
+                    text = stringResource(R.string.dialog_reset_title),
+                    style = MaterialTheme.typography.headlineSmallEmphasized
+                )
             },
             text = {
-                Text(text = stringResource(R.string.dialog_reset_message))
+                Text(
+                    text = stringResource(R.string.dialog_reset_message),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             },
             confirmButton = {
                 Button(
@@ -321,186 +391,31 @@ fun SettingsScreen(
                         repository.resetToDefaults()
                         showResetConfirmDialog = false
                     },
+                    shapes = ButtonDefaults.shapes(),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.error,
                         contentColor = MaterialTheme.colorScheme.onError
                     ),
                     modifier = Modifier.testTag("confirm_reset_button")
                 ) {
-                    Text(stringResource(R.string.action_reset))
+                    Text(
+                        text = stringResource(R.string.action_reset),
+                        style = MaterialTheme.typography.labelLargeEmphasized
+                    )
                 }
             },
             dismissButton = {
                 TextButton(
                     onClick = { showResetConfirmDialog = false },
+                    shapes = ButtonDefaults.shapes(),
                     modifier = Modifier.testTag("cancel_reset_button")
                 ) {
-                    Text(stringResource(R.string.action_cancel))
-                }
-            }
-        )
-    }
-}
-
-@Composable
-private fun SettingsSection(
-    title: String,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmall,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 16.dp, top = 4.dp, bottom = 2.dp)
-        )
-        Card(
-            shape = MaterialTheme.shapes.extraLarge,
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-            ),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Column {
-                content()
-            }
-        }
-    }
-}
-
-@Composable
-private fun ExpressiveDivider() {
-    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-}
-
-@Composable
-private fun SettingsChoiceTile(
-    title: String,
-    subtitle: String,
-    content: @Composable () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp)
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium,
-            color = MaterialTheme.colorScheme.onSurface
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        content()
-    }
-}
-
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
-@Composable
-private fun <T> ConnectedChoiceRow(
-    options: List<T>,
-    selected: T,
-    onSelect: (T) -> Unit,
-    labelFor: @Composable (T) -> String,
-    iconFor: (T) -> androidx.compose.ui.graphics.vector.ImageVector,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(ButtonGroupDefaults.ConnectedSpaceBetween)
-    ) {
-        options.forEachIndexed { index, option ->
-            val checked = option == selected
-            ToggleButton(
-                checked = checked,
-                onCheckedChange = { onSelect(option) },
-                modifier = Modifier.weight(1f),
-                icon = {
-                    Icon(
-                        imageVector = iconFor(option),
-                        contentDescription = null
+                    Text(
+                        text = stringResource(R.string.action_cancel),
+                        style = MaterialTheme.typography.labelLargeEmphasized
                     )
-                },
-                shapes = when (index) {
-                    0 -> ButtonGroupDefaults.connectedLeadingButtonShapes()
-                    options.lastIndex -> ButtonGroupDefaults.connectedTrailingButtonShapes()
-                    else -> ButtonGroupDefaults.connectedMiddleButtonShapes()
                 }
-            ) {
-                Text(
-                    text = labelFor(option),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    style = MaterialTheme.typography.labelLarge
-                )
             }
-        }
-    }
-}
-
-@Composable
-private fun SettingsSwitchTile(
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    leadingIcon: androidx.compose.ui.graphics.vector.ImageVector,
-    modifier: Modifier = Modifier
-) {
-    ListItem(
-        leadingContent = {
-            Icon(
-                imageVector = leadingIcon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        },
-        headlineContent = {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        },
-        supportingContent = {
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        },
-        trailingContent = {
-            Switch(
-                checked = checked,
-                // Row handles the toggle for a larger touch target and single semantics.
-                onCheckedChange = null,
-                thumbContent = if (checked) {
-                    {
-                        Icon(
-                            imageVector = AppIcons.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(SwitchDefaults.IconSize)
-                        )
-                    }
-                } else {
-                    null
-                }
-            )
-        },
-        modifier = modifier
-            .fillMaxWidth()
-            .toggleable(
-                value = checked,
-                role = Role.Switch,
-                onValueChange = onCheckedChange
-            ),
-        colors = ListItemDefaults.colors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerLow
         )
-    )
+    }
 }
