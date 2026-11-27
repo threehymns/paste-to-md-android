@@ -5,29 +5,10 @@ import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.googlefonts.Font
-import androidx.compose.ui.text.googlefonts.GoogleFont
 import androidx.compose.ui.unit.sp
-import com.example.R
 
-val provider = GoogleFont.Provider(
-    providerAuthority = "com.google.android.gms.fonts",
-    providerPackage = "com.google.android.gms",
-    certificates = R.array.com_google_android_gms_fonts_certs
-)
-
-val GoogleSansFlexFont = GoogleFont("Google Sans Flex")
-val RobotoFlexFont = GoogleFont("Roboto Flex")
-
-val BrandFontFamily = FontFamily(
-    Font(googleFont = GoogleSansFlexFont, fontProvider = provider),
-    Font(googleFont = RobotoFlexFont, fontProvider = provider)
-)
-
-val PlainFontFamily = FontFamily(
-    Font(googleFont = GoogleSansFlexFont, fontProvider = provider),
-    Font(googleFont = RobotoFlexFont, fontProvider = provider)
-)
+val BrandFontFamily: FontFamily = FontFamily.SansSerif
+val PlainFontFamily: FontFamily = FontFamily.SansSerif
 
 private val BaseDisplayLarge = TextStyle(
     fontFamily = BrandFontFamily,
@@ -72,7 +53,7 @@ private val BaseHeadlineSmall = TextStyle(
     letterSpacing = 0.sp
 )
 private val BaseTitleLarge = TextStyle(
-    fontFamily = PlainFontFamily,
+    fontFamily = BrandFontFamily,
     fontWeight = FontWeight.Normal,
     fontSize = 22.sp,
     lineHeight = 28.sp,
@@ -135,7 +116,7 @@ private val BaseLabelSmall = TextStyle(
     letterSpacing = 0.5.sp
 )
 
-// Material 3 Expressive typography scale with both baseline and emphasized tokens
+// Material 3 Expressive typography scale backed by Android's native variable sans-serif font
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 val Typography = Typography(
     displayLarge = BaseDisplayLarge,

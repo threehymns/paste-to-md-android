@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SegmentedListItem
@@ -112,7 +113,7 @@ internal fun SettingsChoiceTile(
     val shape = ListItemDefaults.segmentedShapes(index = index, count = count).shape
     Surface(
         shape = shape,
-        color = MaterialTheme.colorScheme.surfaceBright,
+        color = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier.fillMaxWidth()
     ) {
         Column(
@@ -152,6 +153,53 @@ internal fun SettingsChoiceTile(
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
+internal fun SettingsInfoTile(
+    title: String,
+    subtitle: String,
+    leadingIcon: ImageVector,
+    index: Int,
+    count: Int,
+    badgeContainerColor: Color = MaterialTheme.colorScheme.primaryContainer,
+    badgeContentColor: Color = MaterialTheme.colorScheme.onPrimaryContainer,
+    trailingContent: (@Composable () -> Unit)? = null,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = ListItemDefaults.segmentedShapes(index = index, count = count).shape,
+        color = MaterialTheme.colorScheme.surfaceContainer,
+        modifier = modifier.fillMaxWidth()
+    ) {
+        ListItem(
+            leadingContent = {
+                SettingsIconBadge(
+                    icon = leadingIcon,
+                    containerColor = badgeContainerColor,
+                    contentColor = badgeContentColor
+                )
+            },
+            supportingContent = {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            trailingContent = trailingContent,
+            colors = ListItemDefaults.colors(
+                containerColor = Color.Transparent
+            )
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMediumEmphasized,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
 internal fun <T> ConnectedChoiceRow(
     options: List<T>,
     selected: T,
@@ -160,6 +208,13 @@ internal fun <T> ConnectedChoiceRow(
     iconFor: ((T) -> ImageVector)? = null,
     modifier: Modifier = Modifier
 ) {
+    val toggleColors = ToggleButtonDefaults.colors(
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+        checkedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+        checkedContentColor = MaterialTheme.colorScheme.onSecondaryContainer
+    )
+
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -173,6 +228,7 @@ internal fun <T> ConnectedChoiceRow(
                 onCheckedChange = { isChecked ->
                     if (isChecked) onSelect(option)
                 },
+                colors = toggleColors,
                 modifier = Modifier
                     .weight(1f)
                     .semantics { role = Role.RadioButton },
@@ -239,7 +295,7 @@ internal fun SettingsSwitchTile(
         targetValue = if (checked) {
             MaterialTheme.colorScheme.primaryContainer
         } else {
-            MaterialTheme.colorScheme.surfaceContainerHigh
+            MaterialTheme.colorScheme.surfaceContainerHighest
         },
         animationSpec = MaterialTheme.motionScheme.defaultEffectsSpec(),
         label = "switch_badge_container"
@@ -258,7 +314,7 @@ internal fun SettingsSwitchTile(
         onClick = { onCheckedChange(!checked) },
         shapes = ListItemDefaults.segmentedShapes(index = index, count = count),
         colors = ListItemDefaults.segmentedColors(
-            containerColor = MaterialTheme.colorScheme.surfaceBright
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
         ),
         leadingContent = {
             SettingsIconBadge(
@@ -277,18 +333,14 @@ internal fun SettingsSwitchTile(
         trailingContent = {
             Switch(
                 checked = checked,
-                // Row handles the toggle for a larger touch target and single semantics.
+                // Row handles toggle state for a full-row touch target and unified semantics.
                 onCheckedChange = null,
-                thumbContent = if (checked) {
-                    {
-                        Icon(
-                            imageVector = AppIcons.Check,
-                            contentDescription = null,
-                            modifier = Modifier.size(SwitchDefaults.IconSize)
-                        )
-                    }
-                } else {
-                    null
+                thumbContent = {
+                    Icon(
+                        imageVector = if (checked) AppIcons.Check else AppIcons.Close,
+                        contentDescription = null,
+                        modifier = Modifier.size(SwitchDefaults.IconSize)
+                    )
                 }
             )
         },

@@ -37,4 +37,13 @@
     <string name="action_cancel">Cancel</string>
     <string name="app_version_label">Version 1.1.0</string>
     <string name="app_about_desc">Powered by Flexmark HTML-to-Markdown engine</string>
+    <string name="option_heading_atx">ATX (#)</string>
+    <string name="option_heading_setext">Setext (===)</string>
+    <string name="option_bullet_hyphen">- Hyphen</string>
+    <string name="option_bullet_asterisk">* Asterisk</string>
+    <string name="option_bullet_plus">+ Plus</string>
+    <string name="option_fence_backticks">``` Backticks</string>
+    <string name="option_fence_tilde">~~~ Tildes</string>
+    <string name="option_emphasis_asterisk">* Asterisk</string>
+    <string name="option_emphasis_underscore">_ Underscore</string>
 </resources>

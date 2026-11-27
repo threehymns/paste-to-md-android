@@ -19,7 +19,6 @@ import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButtonDefaults
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MediumFlexibleTopAppBar
@@ -37,7 +36,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -74,7 +72,7 @@ fun SettingsScreen(
         modifier = modifier
             .fillMaxSize()
             .nestedScroll(scrollBehavior.nestedScrollConnection),
-        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             MediumFlexibleTopAppBar(
                 title = { Text(text = stringResource(R.string.settings_title)) },
@@ -84,7 +82,7 @@ fun SettingsScreen(
                         onClick = onNavigateBack,
                         shapes = IconButtonDefaults.shapes(),
                         colors = IconButtonDefaults.filledTonalIconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             contentColor = MaterialTheme.colorScheme.onSurface
                         ),
                         modifier = Modifier
@@ -98,8 +96,8 @@ fun SettingsScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer
                 ),
                 scrollBehavior = scrollBehavior
             )
@@ -205,7 +203,12 @@ fun SettingsScreen(
                             options = HeadingStyle.entries,
                             selected = settings.headingStyle,
                             onSelect = { repository.setHeadingStyle(it) },
-                            labelFor = { if (it == HeadingStyle.ATX) "ATX (#)" else "Setext (===)" },
+                            labelFor = {
+                                when (it) {
+                                    HeadingStyle.ATX -> stringResource(R.string.option_heading_atx)
+                                    HeadingStyle.SETEXT -> stringResource(R.string.option_heading_setext)
+                                }
+                            },
                             modifier = Modifier.testTag("setting_heading_style_segmented")
                         )
                     }
@@ -221,7 +224,13 @@ fun SettingsScreen(
                             options = BulletMarker.entries,
                             selected = settings.bulletMarker,
                             onSelect = { repository.setBulletMarker(it) },
-                            labelFor = { it.title },
+                            labelFor = {
+                                when (it) {
+                                    BulletMarker.HYPHEN -> stringResource(R.string.option_bullet_hyphen)
+                                    BulletMarker.ASTERISK -> stringResource(R.string.option_bullet_asterisk)
+                                    BulletMarker.PLUS -> stringResource(R.string.option_bullet_plus)
+                                }
+                            },
                             modifier = Modifier.testTag("setting_bullet_marker_segmented")
                         )
                     }
@@ -237,7 +246,12 @@ fun SettingsScreen(
                             options = CodeFenceStyle.entries,
                             selected = settings.codeFenceStyle,
                             onSelect = { repository.setCodeFenceStyle(it) },
-                            labelFor = { it.title },
+                            labelFor = {
+                                when (it) {
+                                    CodeFenceStyle.BACKTICKS -> stringResource(R.string.option_fence_backticks)
+                                    CodeFenceStyle.TILDE -> stringResource(R.string.option_fence_tilde)
+                                }
+                            },
                             modifier = Modifier.testTag("setting_code_fence_segmented")
                         )
                     }
@@ -254,7 +268,10 @@ fun SettingsScreen(
                             selected = settings.emphasisMarker,
                             onSelect = { repository.setEmphasisMarker(it) },
                             labelFor = {
-                                if (it == EmphasisMarker.ASTERISK) "* Asterisk" else "_ Underscore"
+                                when (it) {
+                                    EmphasisMarker.ASTERISK -> stringResource(R.string.option_emphasis_asterisk)
+                                    EmphasisMarker.UNDERSCORE -> stringResource(R.string.option_emphasis_underscore)
+                                }
                             },
                             modifier = Modifier.testTag("setting_emphasis_marker_segmented")
                         )
@@ -276,50 +293,27 @@ fun SettingsScreen(
             // 4. About (separated from destructive action)
             item(key = "section_about") {
                 SettingsSection(title = stringResource(R.string.category_about)) {
-                    Surface(
-                        shape = ListItemDefaults.segmentedShapes(index = 0, count = 1).shape,
-                        color = MaterialTheme.colorScheme.surfaceBright,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        ListItem(
-                            leadingContent = {
-                                SettingsIconBadge(
-                                    icon = AppIcons.Info,
-                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
-                                )
-                            },
-                            supportingContent = {
+                    SettingsInfoTile(
+                        title = stringResource(R.string.app_name),
+                        subtitle = stringResource(R.string.app_about_desc),
+                        leadingIcon = AppIcons.Info,
+                        index = 0,
+                        count = 1,
+                        trailingContent = {
+                            Surface(
+                                shape = CircleShape,
+                                color = MaterialTheme.colorScheme.secondaryContainer,
+                                modifier = Modifier.testTag("app_version_chip")
+                            ) {
                                 Text(
-                                    text = stringResource(R.string.app_about_desc),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    text = "v${BuildConfig.VERSION_NAME}",
+                                    style = MaterialTheme.typography.labelMediumEmphasized,
+                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
                                 )
-                            },
-                            trailingContent = {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.secondaryContainer,
-                                    modifier = Modifier.testTag("app_version_chip")
-                                ) {
-                                    Text(
-                                        text = "v${BuildConfig.VERSION_NAME}",
-                                        style = MaterialTheme.typography.labelMediumEmphasized,
-                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                    )
-                                }
-                            },
-                            colors = ListItemDefaults.colors(
-                                containerColor = Color.Transparent
-                            )
-                        ) {
-                            Text(
-                                text = stringResource(R.string.app_name),
-                                style = MaterialTheme.typography.titleMediumEmphasized
-                            )
+                            }
                         }
-                    }
+                    )
                 }
             }
 
@@ -330,7 +324,7 @@ fun SettingsScreen(
                         onClick = { showResetConfirmDialog = true },
                         shapes = ListItemDefaults.segmentedShapes(index = 0, count = 1),
                         colors = ListItemDefaults.segmentedColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceBright
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
                         ),
                         leadingContent = {
                             SettingsIconBadge(
