@@ -2,6 +2,7 @@ package com.example
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ContentResolver
 import android.content.Context
 import android.net.Uri
 import android.os.Bundle
@@ -34,6 +35,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.AppSettings
 import com.example.data.AppSettingsRepository
@@ -42,6 +44,8 @@ import com.example.ui.settings.SettingsScreen
 import com.example.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -87,22 +91,59 @@ private fun backExitScale(progress: Float): Float =
 private fun backEnterScale(progress: Float): Float =
     BackEnterScaleStart + (1f - BackEnterScaleStart) * progress
 
+internal fun writeMarkdownToUri(
+    contentResolver: ContentResolver,
+    uri: Uri,
+    markdown: String
+): Boolean {
+    return try {
+        val outputStream = contentResolver.openOutputStream(uri) ?: return false
+        outputStream.use { stream ->
+            stream.write(markdown.toByteArray(Charsets.UTF_8))
+            stream.flush()
+        }
+        true
+    } catch (e: Exception) {
+        false
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 class MainActivity : ComponentActivity() {
+
+    private val windowFocusState = MutableStateFlow(false)
+
+    internal var htmlConverter: suspend (String, AppSettings) -> String = { html, settings ->
+        withContext(Dispatchers.Default) {
+            MarkdownConverter.convert(html, settings)
+        }
+    }
+
+    internal lateinit var settingsRepository: AppSettingsRepository
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        windowFocusState.value = hasFocus
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val settingsRepository = AppSettingsRepository(applicationContext)
+        settingsRepository = AppSettingsRepository(applicationContext)
+        val sessionViewModel = ViewModelProvider(this)[MarkdownSessionViewModel::class.java]
 
         setContent {
             val settings by settingsRepository.settings.collectAsStateWithLifecycle()
+            val markdownText by sessionViewModel.markdownText.collectAsStateWithLifecycle()
+            val hasWindowFocus by windowFocusState.collectAsStateWithLifecycle()
             var backStack by rememberSaveable(stateSaver = BackStackSaver) {
                 mutableStateOf(listOf(AppScreen.PASTE))
             }
-            var markdownText by rememberSaveable { mutableStateOf("") }
             var hasAutoPastedOnLaunch by rememberSaveable { mutableStateOf(false) }
             var isConverting by remember { mutableStateOf(false) }
+            var activeConversionJob by remember { mutableStateOf<Job?>(null) }
+            var conversionGeneration by remember { mutableIntStateOf(0) }
 
             val context = LocalContext.current
             val coroutineScope = rememberCoroutineScope()
@@ -110,22 +151,27 @@ class MainActivity : ComponentActivity() {
                 context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
             }
 
+            fun cancelActiveConversion() {
+                conversionGeneration++
+                activeConversionJob?.cancel()
+                activeConversionJob = null
+                isConverting = false
+            }
+
             val saveFileLauncher = rememberLauncherForActivityResult(
                 contract = ActivityResultContracts.CreateDocument("text/markdown")
             ) { uri: Uri? ->
-                uri?.let {
+                uri?.let { targetUri ->
+                    val contentToSave = sessionViewModel.markdownText.value
                     coroutineScope.launch(Dispatchers.IO) {
-                        try {
-                            context.contentResolver.openOutputStream(it)?.use { outputStream ->
-                                outputStream.write(markdownText.toByteArray())
-                            }
-                            withContext(Dispatchers.Main) {
-                                Toast.makeText(context, "File saved successfully", Toast.LENGTH_SHORT).show()
-                            }
-                        } catch (e: Exception) {
-                            withContext(Dispatchers.Main) {
-                                Toast.makeText(context, "Error saving file", Toast.LENGTH_SHORT).show()
-                            }
+                        val saved = writeMarkdownToUri(
+                            contentResolver = context.contentResolver,
+                            uri = targetUri,
+                            markdown = contentToSave
+                        )
+                        withContext(Dispatchers.Main) {
+                            val message = if (saved) "File saved successfully" else "Error saving file"
+                            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
                         }
                     }
                 }
@@ -138,11 +184,15 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            fun copyToClipboard(textToCopy: String = markdownText, showToast: Boolean = true) {
+            fun copyToClipboard(
+                textToCopy: String = sessionViewModel.markdownText.value,
+                showToast: Boolean = true,
+                toastMessage: String = "Markdown copied to clipboard"
+            ) {
                 val clip = ClipData.newPlainText("Markdown", textToCopy)
                 clipboardManager.setPrimaryClip(clip)
                 if (showToast) {
-                    Toast.makeText(context, "Markdown copied to clipboard", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, toastMessage, Toast.LENGTH_SHORT).show()
                 }
             }
 
@@ -159,29 +209,49 @@ class MainActivity : ComponentActivity() {
                 val text = item.text?.toString()
 
                 if (html != null) {
+                    cancelActiveConversion()
+                    val generation = conversionGeneration
+                    val settingsSnapshot = settings
                     isConverting = true
-                    coroutineScope.launch {
-                        val converted = withContext(Dispatchers.Default) {
-                            try {
-                                MarkdownConverter.convert(html, settings)
-                            } catch (e: Exception) {
-                                "Error converting HTML: ${e.message}"
-                            }
+                    activeConversionJob = coroutineScope.launch {
+                        val conversionResult = try {
+                            Result.success(htmlConverter(html, settingsSnapshot))
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            Result.failure(e)
                         }
-                        markdownText = converted
+
+                        if (conversionGeneration != generation) return@launch
+
+                        activeConversionJob = null
                         isConverting = false
 
-                        if (settings.autoCopyOnConvert) {
-                            val autoClip = ClipData.newPlainText("Markdown", converted)
-                            clipboardManager.setPrimaryClip(autoClip)
-                            Toast.makeText(context, "Converted and copied to clipboard!", Toast.LENGTH_SHORT).show()
-                        }
-                        if (navigateToPreview && backStack.last() == AppScreen.PASTE) {
-                            backStack = backStack + AppScreen.PREVIEW
+                        conversionResult.onSuccess { converted ->
+                            sessionViewModel.updateMarkdownText(converted)
+                            if (settingsSnapshot.autoCopyOnConvert) {
+                                copyToClipboard(
+                                    textToCopy = converted,
+                                    showToast = true,
+                                    toastMessage = "Converted and copied to clipboard!"
+                                )
+                            }
+                            if (navigateToPreview && backStack.last() == AppScreen.PASTE) {
+                                backStack = backStack + AppScreen.PREVIEW
+                            }
+                        }.onFailure { error ->
+                            val detail = error.message?.takeIf { it.isNotBlank() }
+                            val errorMessage = if (detail != null) {
+                                "Error converting HTML: $detail"
+                            } else {
+                                "Error converting HTML"
+                            }
+                            Toast.makeText(context, errorMessage, Toast.LENGTH_SHORT).show()
                         }
                     }
                 } else if (!text.isNullOrEmpty()) {
-                    markdownText = text
+                    cancelActiveConversion()
+                    sessionViewModel.updateMarkdownText(text)
                     if (settings.autoCopyOnConvert) {
                         copyToClipboard(textToCopy = text, showToast = true)
                     }
@@ -193,8 +263,14 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            LaunchedEffect(settings.autoPasteOnLaunch) {
-                if (settings.autoPasteOnLaunch && !hasAutoPastedOnLaunch && backStack.last() == AppScreen.PASTE && markdownText.isEmpty()) {
+            LaunchedEffect(settings.autoPasteOnLaunch, hasWindowFocus) {
+                if (
+                    settings.autoPasteOnLaunch &&
+                    hasWindowFocus &&
+                    !hasAutoPastedOnLaunch &&
+                    backStack.last() == AppScreen.PASTE &&
+                    markdownText.isEmpty()
+                ) {
                     hasAutoPastedOnLaunch = true
                     pasteFromClipboard(navigateToPreview = true)
                 }
@@ -212,6 +288,7 @@ class MainActivity : ComponentActivity() {
             fun navigateBack() {
                 if (backStack.size <= 1) return
                 if (isBackTransitionActive && backSettleTarget == 1f) return
+                cancelActiveConversion()
                 val wasActive = isBackTransitionActive
                 backTransitionGeneration++
                 resetBackProgressBeforeAnimate = !wasActive
@@ -249,11 +326,12 @@ class MainActivity : ComponentActivity() {
                 if (backTransitionGeneration != generation) return@LaunchedEffect
 
                 if (target == 1f && backStack.size > 1) {
+                    cancelActiveConversion()
                     val poppedScreen = backStack.last()
                     backStack = backStack.dropLast(1)
                     screenStateHolder.removeState(poppedScreen)
                     if (poppedScreen == AppScreen.PREVIEW) {
-                        markdownText = ""
+                        sessionViewModel.clearMarkdownText()
                     }
                 }
                 isBackTransitionActive = false
@@ -290,6 +368,7 @@ class MainActivity : ComponentActivity() {
                     // Committed: let the fade-through finish before swapping screens.
                     // Swapping at the current progress is the visible pop.
                     if (backTransitionGeneration == generation) {
+                        cancelActiveConversion()
                         backSettleTarget = 1f
                     }
                 } catch (e: CancellationException) {
@@ -371,7 +450,7 @@ class MainActivity : ComponentActivity() {
                                                     MarkdownPreviewScreen(
                                                         markdownText = markdownText,
                                                         isConverting = isConverting,
-                                                        onMarkdownChange = { markdownText = it },
+                                                        onMarkdownChange = { sessionViewModel.updateMarkdownText(it) },
                                                         onClear = { navigateBack() },
                                                         onPasteAgain = { pasteFromClipboard(navigateToPreview = false) },
                                                         onSaveFile = { saveFileLauncher.launch("converted.md") },
@@ -501,6 +580,9 @@ fun MarkdownPreviewScreen(
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val colorScheme = MaterialTheme.colorScheme
+    val syntaxHighlighter = remember(colorScheme) { MarkdownSyntaxHighlighter(colorScheme) }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -520,7 +602,7 @@ fun MarkdownPreviewScreen(
                 )
             },
             textStyle = MaterialTheme.typography.bodyLarge,
-            visualTransformation = MarkdownSyntaxHighlighter(MaterialTheme.colorScheme),
+            visualTransformation = syntaxHighlighter,
             shape = RoundedCornerShape(32.dp),
             colors = TextFieldDefaults.colors(
                 focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
