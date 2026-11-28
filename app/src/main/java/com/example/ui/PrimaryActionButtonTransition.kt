@@ -34,8 +34,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp as lerpColor
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -45,6 +50,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import com.example.ui.theme.MotionTokens
 import kotlin.math.PI
 import kotlin.math.roundToInt
@@ -154,6 +160,52 @@ internal fun computePressMorphCornerShape(
 }
 
 /**
+ * Stable [Shape] that defers reading [pressFraction] to [createOutline] (draw/graphicsLayer phase),
+ * eliminating per-frame recomposition of the host [Button] during press-and-release springs.
+ */
+@Stable
+internal class DynamicPressMorphShape(
+    private val restingShape: CornerBasedShape,
+    private val pressedShape: CornerBasedShape,
+    private val pressFraction: () -> Float
+) : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density
+    ): Outline {
+        val fraction = pressFraction()
+        val maxRadius = (minOf(size.width, size.height) / 2f).coerceAtLeast(0f)
+        fun radius(start: CornerSize, end: CornerSize): Float =
+            lerpUnclamped(
+                start = start.toPx(size, density),
+                stop = end.toPx(size, density),
+                fraction = fraction
+            ).coerceIn(0f, maxRadius)
+
+        val topStart = radius(restingShape.topStart, pressedShape.topStart)
+        val topEnd = radius(restingShape.topEnd, pressedShape.topEnd)
+        val bottomEnd = radius(restingShape.bottomEnd, pressedShape.bottomEnd)
+        val bottomStart = radius(restingShape.bottomStart, pressedShape.bottomStart)
+
+        val leftTop = if (layoutDirection == LayoutDirection.Ltr) topStart else topEnd
+        val rightTop = if (layoutDirection == LayoutDirection.Ltr) topEnd else topStart
+        val rightBottom = if (layoutDirection == LayoutDirection.Ltr) bottomEnd else bottomStart
+        val leftBottom = if (layoutDirection == LayoutDirection.Ltr) bottomStart else bottomEnd
+
+        return Outline.Rounded(
+            RoundRect(
+                rect = Rect(Offset.Zero, size),
+                topLeft = CornerRadius(leftTop, leftTop),
+                topRight = CornerRadius(rightTop, rightTop),
+                bottomRight = CornerRadius(rightBottom, rightBottom),
+                bottomLeft = CornerRadius(leftBottom, leftBottom)
+            )
+        )
+    }
+}
+
+/**
  * Primary Material 3 Expressive action button that shares its corner-radius press spring
  * with the layout transition overlay when hosted in [MainActivity], preventing corner-radius
  * animations from cancelling or snapping when navigation starts on release.
@@ -172,15 +224,17 @@ fun ExpressivePrimaryActionButton(
     if (interactionSource != null && pressShapeFraction != null) {
         val restingShape = (defaultShapes.shape as? CornerBasedShape) ?: CircleShape
         val pressedShape = (defaultShapes.pressedShape as? CornerBasedShape) ?: MaterialTheme.shapes.medium
-        val animatedShape = interpolatedCornerShape(
-            restingShape = restingShape,
-            pressedShape = pressedShape,
-            pressFraction = pressShapeFraction()
-        )
+        val dynamicShape = remember(restingShape, pressedShape, pressShapeFraction) {
+            DynamicPressMorphShape(
+                restingShape = restingShape,
+                pressedShape = pressedShape,
+                pressFraction = pressShapeFraction
+            )
+        }
         Button(
             onClick = onClick,
             enabled = enabled,
-            shape = animatedShape,
+            shape = dynamicShape,
             contentPadding = ButtonDefaults.MediumContentPadding,
             interactionSource = interactionSource,
             modifier = modifier,
