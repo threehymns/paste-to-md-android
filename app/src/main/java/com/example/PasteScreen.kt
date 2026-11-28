@@ -38,6 +38,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.LineBreak
@@ -55,6 +58,8 @@ fun PasteToMarkdownScreen(
     onPaste: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
+    isPasteButtonHidden: () -> Boolean = { false },
+    onPasteButtonPlaced: ((LayoutCoordinates) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val motionScheme = MaterialTheme.motionScheme
@@ -162,6 +167,14 @@ fun PasteToMarkdownScreen(
                         .widthIn(max = 360.dp)
                         .fillMaxWidth()
                         .heightIn(min = ButtonDefaults.MediumContainerHeight)
+                        .then(
+                            if (onPasteButtonPlaced != null) {
+                                Modifier.onGloballyPositioned(onPasteButtonPlaced)
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .graphicsLayer { alpha = if (isPasteButtonHidden()) 0f else 1f }
                         .testTag("paste_button")
                 ) {
                     Icon(

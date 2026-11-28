@@ -40,6 +40,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.TextUnit
@@ -62,6 +65,8 @@ fun MarkdownPreviewScreen(
     onCopy: () -> Unit,
     onOpenSettings: () -> Unit,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
+    isCopyButtonHidden: () -> Boolean = { false },
+    onCopyButtonPlaced: ((LayoutCoordinates) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -225,6 +230,14 @@ fun MarkdownPreviewScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = ButtonDefaults.MediumContainerHeight)
+                        .then(
+                            if (onCopyButtonPlaced != null) {
+                                Modifier.onGloballyPositioned(onCopyButtonPlaced)
+                            } else {
+                                Modifier
+                            }
+                        )
+                        .graphicsLayer { alpha = if (isCopyButtonHidden()) 0f else 1f }
                         .testTag("copy_button")
                 ) {
                     Icon(

@@ -27,6 +27,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -39,12 +40,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFontFamilyResolver
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntSize
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.AppSettings
 import com.example.data.AppSettingsRepository
+import com.example.ui.ExpressiveButtonMorphOverlay
+import com.example.ui.MeasuredButtonBounds
+import com.example.ui.computeRelativeButtonRect
 import com.example.ui.settings.SettingsScreen
 import com.example.ui.theme.BrandFontFamily
 import com.example.ui.theme.MonoFontFamily
@@ -53,6 +62,7 @@ import com.example.ui.theme.PlainFontFamily
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -62,6 +72,10 @@ enum class AppScreen {
     PREVIEW,
     SETTINGS
 }
+
+private fun isPasteCopyTransitionPair(first: AppScreen?, second: AppScreen?): Boolean =
+    (first == AppScreen.PASTE && second == AppScreen.PREVIEW) ||
+        (first == AppScreen.PREVIEW && second == AppScreen.PASTE)
 
 private val BackStackSaver = listSaver<List<AppScreen>, String>(
     save = { stack -> stack.map { it.name } },
@@ -222,16 +236,24 @@ class MainActivity : ComponentActivity() {
                 val screenStateHolder = rememberSaveableStateHolder()
 
                 val backProgress = remember { Animatable(0f) }
+                val backSpatialProgress = remember { Animatable(0f) }
                 var isBackTransitionActive by remember { mutableStateOf(false) }
                 var backSettleTarget by remember { mutableStateOf<Float?>(null) }
                 var backTransitionGeneration by remember { mutableIntStateOf(0) }
                 var resetBackProgressBeforeAnimate by remember { mutableStateOf(false) }
+                var backResetInitialEffects by remember { mutableFloatStateOf(0f) }
+                var backResetInitialSpatial by remember { mutableFloatStateOf(0f) }
 
                 val forwardProgress = remember { Animatable(1f) }
+                val forwardSpatialProgress = remember { Animatable(1f) }
                 var isForwardTransitionActive by remember { mutableStateOf(false) }
                 var forwardOutgoingScreen by remember { mutableStateOf<AppScreen?>(null) }
                 var forwardTransitionGeneration by remember { mutableIntStateOf(0) }
                 var resetForwardProgressBeforeAnimate by remember { mutableStateOf(false) }
+
+                var rootContainerSize by remember { mutableStateOf(IntSize.Zero) }
+                var pasteMeasuredBounds by remember { mutableStateOf<MeasuredButtonBounds?>(null) }
+                var copyMeasuredBounds by remember { mutableStateOf<MeasuredButtonBounds?>(null) }
 
                 fun cancelForwardTransition() {
                     if (!isForwardTransitionActive) return
@@ -255,20 +277,44 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(forwardTransitionGeneration) {
                     if (!isForwardTransitionActive) return@LaunchedEffect
                     val generation = forwardTransitionGeneration
+                    val animateSpatialButton = isPasteCopyTransitionPair(
+                        forwardOutgoingScreen,
+                        backStack.lastOrNull()
+                    )
 
                     if (resetForwardProgressBeforeAnimate) {
                         forwardProgress.snapTo(0f)
+                        forwardSpatialProgress.snapTo(0f)
                         resetForwardProgressBeforeAnimate = false
                     }
 
-                    forwardProgress.animateTo(
-                        targetValue = 1f,
-                        animationSpec = motionScheme.defaultEffectsSpec()
-                    )
+                    if (animateSpatialButton) {
+                        coroutineScope {
+                            launch {
+                                forwardProgress.animateTo(
+                                    targetValue = 1f,
+                                    animationSpec = motionScheme.defaultEffectsSpec()
+                                )
+                            }
+                            launch {
+                                forwardSpatialProgress.animateTo(
+                                    targetValue = 1f,
+                                    animationSpec = motionScheme.defaultSpatialSpec()
+                                )
+                            }
+                        }
+                    } else {
+                        forwardSpatialProgress.snapTo(1f)
+                        forwardProgress.animateTo(
+                            targetValue = 1f,
+                            animationSpec = motionScheme.defaultEffectsSpec()
+                        )
+                    }
 
                     if (forwardTransitionGeneration != generation) return@LaunchedEffect
 
                     forwardProgress.snapTo(1f)
+                    forwardSpatialProgress.snapTo(1f)
                     if (forwardTransitionGeneration == generation) {
                         isForwardTransitionActive = false
                         forwardOutgoingScreen = null
@@ -278,10 +324,28 @@ class MainActivity : ComponentActivity() {
                 fun navigateBack() {
                     if (backStack.size <= 1) return
                     if (isBackTransitionActive && backSettleTarget == 1f) return
+                    val interruptedPasteCopyForward = isForwardTransitionActive &&
+                        isPasteCopyTransitionPair(forwardOutgoingScreen, backStack.lastOrNull())
+                    val reversedEffects = if (interruptedPasteCopyForward) {
+                        val current = if (resetForwardProgressBeforeAnimate) 0f else forwardProgress.value
+                        (1f - current).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    }
+                    val reversedSpatial = if (interruptedPasteCopyForward) {
+                        val current = if (resetForwardProgressBeforeAnimate) 0f else forwardSpatialProgress.value
+                        (1f - current).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    }
                     cancelForwardTransition()
                     cancelActiveConversion()
                     val wasActive = isBackTransitionActive
                     backTransitionGeneration++
+                    if (!wasActive) {
+                        backResetInitialEffects = reversedEffects
+                        backResetInitialSpatial = reversedSpatial
+                    }
                     resetBackProgressBeforeAnimate = !wasActive
                     isBackTransitionActive = true
                     backSettleTarget = 1f
@@ -403,20 +467,46 @@ class MainActivity : ComponentActivity() {
                 LaunchedEffect(backSettleTarget, backTransitionGeneration) {
                     val target = backSettleTarget ?: return@LaunchedEffect
                     val generation = backTransitionGeneration
+                    val animateSpatialButton = isPasteCopyTransitionPair(
+                        backStack.getOrNull(backStack.lastIndex - 1),
+                        backStack.lastOrNull()
+                    )
 
                     if (resetBackProgressBeforeAnimate) {
-                        backProgress.snapTo(0f)
+                        backProgress.snapTo(backResetInitialEffects)
+                        backSpatialProgress.snapTo(backResetInitialSpatial)
                         resetBackProgressBeforeAnimate = false
+                        backResetInitialEffects = 0f
+                        backResetInitialSpatial = 0f
                     }
 
-                    backProgress.animateTo(
-                        targetValue = target,
-                        animationSpec = motionScheme.defaultEffectsSpec()
-                    )
+                    if (animateSpatialButton) {
+                        coroutineScope {
+                            launch {
+                                backProgress.animateTo(
+                                    targetValue = target,
+                                    animationSpec = motionScheme.defaultEffectsSpec()
+                                )
+                            }
+                            launch {
+                                backSpatialProgress.animateTo(
+                                    targetValue = target,
+                                    animationSpec = motionScheme.defaultSpatialSpec()
+                                )
+                            }
+                        }
+                    } else {
+                        backSpatialProgress.snapTo(target)
+                        backProgress.animateTo(
+                            targetValue = target,
+                            animationSpec = motionScheme.defaultEffectsSpec()
+                        )
+                    }
 
                     if (backTransitionGeneration != generation) return@LaunchedEffect
 
                     backProgress.snapTo(target)
+                    backSpatialProgress.snapTo(target)
 
                     if (backTransitionGeneration != generation) return@LaunchedEffect
 
@@ -433,28 +523,61 @@ class MainActivity : ComponentActivity() {
                     backSettleTarget = null
                     if (target == 1f && backTransitionGeneration == generation) {
                         backProgress.snapTo(0f)
+                        backSpatialProgress.snapTo(0f)
                     }
                 }
 
                 PredictiveBackHandler(enabled = backStack.size > 1) { progressFlow ->
+                    val interruptedPasteCopyForward = isForwardTransitionActive &&
+                        isPasteCopyTransitionPair(forwardOutgoingScreen, backStack.lastOrNull())
+                    val reversedEffects = if (interruptedPasteCopyForward) {
+                        val current = if (resetForwardProgressBeforeAnimate) 0f else forwardProgress.value
+                        (1f - current).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    }
+                    val reversedSpatial = if (interruptedPasteCopyForward) {
+                        val current = if (resetForwardProgressBeforeAnimate) 0f else forwardSpatialProgress.value
+                        (1f - current).coerceIn(0f, 1f)
+                    } else {
+                        0f
+                    }
                     cancelForwardTransition()
                     val wasActive = isBackTransitionActive
                     backTransitionGeneration++
                     val generation = backTransitionGeneration
                     backSettleTarget = null
                     resetBackProgressBeforeAnimate = false
+                    backResetInitialEffects = 0f
+                    backResetInitialSpatial = 0f
                     isBackTransitionActive = true
 
-                    val initialProgress = if (wasActive) backProgress.value else 0f
+                    val initialProgress = when {
+                        wasActive -> backProgress.value
+                        interruptedPasteCopyForward -> reversedEffects
+                        else -> 0f
+                    }
+                    val initialSpatial = when {
+                        wasActive -> backSpatialProgress.value
+                        interruptedPasteCopyForward -> reversedSpatial
+                        else -> 0f
+                    }
                     if (!wasActive) {
-                        backProgress.snapTo(0f)
+                        backProgress.snapTo(initialProgress)
+                        backSpatialProgress.snapTo(initialSpatial)
                     }
                     val remainingProgress = 1f - initialProgress
+                    val remainingSpatial = 1f - initialSpatial
 
                     try {
                         progressFlow.collect { event ->
+                            val eventProgress = event.progress.coerceIn(0f, 1f)
                             backProgress.snapTo(
-                                initialProgress + remainingProgress * event.progress
+                                initialProgress + remainingProgress * eventProgress
+                            )
+                            val easedEvent = PredictiveBackEasing.transform(eventProgress)
+                            backSpatialProgress.snapTo(
+                                initialSpatial + remainingSpatial * easedEvent
                             )
                         }
                         if (backTransitionGeneration == generation) {
@@ -490,14 +613,67 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                val activePasteCopyForward = isForwardTransitionActive &&
+                    isPasteCopyTransitionPair(forwardOutgoingScreen, topScreen)
+                val activePasteCopyBack = isBackTransitionActive &&
+                    isPasteCopyTransitionPair(previousScreen, topScreen)
+                val validPasteBounds = pasteMeasuredBounds
+                    ?.takeIf { it.containerSize == rootContainerSize }
+                    ?.rect
+                val validCopyBounds = copyMeasuredBounds
+                    ?.takeIf { it.containerSize == rootContainerSize }
+                    ?.rect
+                val showButtonMorphOverlay = (activePasteCopyForward || activePasteCopyBack) &&
+                    validPasteBounds != null &&
+                    validCopyBounds != null
+                val latestShowButtonMorphOverlay by rememberUpdatedState(showButtonMorphOverlay)
+                val isPrimaryActionButtonHidden = remember { { latestShowButtonMorphOverlay } }
+
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.surface
                 ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .onSizeChanged { rootContainerSize = it }
+                    ) {
                         visibleScreens.forEach { screen ->
                             key(screen) {
                                 val isTop = screen == topScreen
+                                var screenRootCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                                var buttonCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
+                                val updateButtonBounds = remember(screen) {
+                                    { container: LayoutCoordinates?, target: LayoutCoordinates? ->
+                                        val rect = computeRelativeButtonRect(container, target)
+                                        if (rect != null && container != null) {
+                                            val measured = MeasuredButtonBounds(
+                                                rect = rect,
+                                                containerSize = container.size
+                                            )
+                                            when (screen) {
+                                                AppScreen.PASTE -> {
+                                                    if (pasteMeasuredBounds != measured) {
+                                                        pasteMeasuredBounds = measured
+                                                    }
+                                                }
+                                                AppScreen.PREVIEW -> {
+                                                    if (copyMeasuredBounds != measured) {
+                                                        copyMeasuredBounds = measured
+                                                    }
+                                                }
+                                                AppScreen.SETTINGS -> Unit
+                                            }
+                                        }
+                                    }
+                                }
+                                val onButtonPlaced = remember(screen) {
+                                    { coords: LayoutCoordinates ->
+                                        buttonCoords = coords
+                                        updateButtonBounds(screenRootCoords, coords)
+                                    }
+                                }
+
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
@@ -505,7 +681,7 @@ class MainActivity : ComponentActivity() {
                                             when {
                                                 isBackTransitionActive -> {
                                                     val progress = if (resetBackProgressBeforeAnimate) {
-                                                        0f
+                                                        backResetInitialEffects
                                                     } else {
                                                         backProgress.value.coerceIn(0f, 1f)
                                                     }
@@ -552,44 +728,111 @@ class MainActivity : ComponentActivity() {
                                         }
                                         .background(MaterialTheme.colorScheme.surface)
                                 ) {
-                                    screenStateHolder.SaveableStateProvider(screen) {
-                                        when (screen) {
-                                            AppScreen.PASTE -> {
-                                                PasteToMarkdownScreen(
-                                                    isConverting = isConverting,
-                                                    onPaste = onPasteAndNavigate,
-                                                    onOpenSettings = onOpenSettings,
-                                                    snackbarHostState = snackbarHostState
-                                                )
+                                    // Unscaled screen-space reference container so measured button bounds
+                                    // remain immune to the parent graphicsLayer scale transform.
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .onGloballyPositioned { coords ->
+                                                screenRootCoords = coords
+                                                updateButtonBounds(coords, buttonCoords)
                                             }
+                                    ) {
+                                        screenStateHolder.SaveableStateProvider(screen) {
+                                            when (screen) {
+                                                AppScreen.PASTE -> {
+                                                    PasteToMarkdownScreen(
+                                                        isConverting = isConverting,
+                                                        onPaste = onPasteAndNavigate,
+                                                        onOpenSettings = onOpenSettings,
+                                                        snackbarHostState = snackbarHostState,
+                                                        isPasteButtonHidden = isPrimaryActionButtonHidden,
+                                                        onPasteButtonPlaced = onButtonPlaced
+                                                    )
+                                                }
 
-                                            AppScreen.PREVIEW -> {
-                                                MarkdownPreviewScreen(
-                                                    markdownText = markdownText,
-                                                    isConverting = isConverting,
-                                                    onMarkdownChange = onMarkdownChange,
-                                                    onClear = onNavigateBack,
-                                                    onPasteAgain = onPasteInPlace,
-                                                    onSaveFile = onSaveFile,
-                                                    onCopy = onCopy,
-                                                    onOpenSettings = onOpenSettings,
-                                                    snackbarHostState = snackbarHostState
-                                                )
-                                            }
+                                                AppScreen.PREVIEW -> {
+                                                    MarkdownPreviewScreen(
+                                                        markdownText = markdownText,
+                                                        isConverting = isConverting,
+                                                        onMarkdownChange = onMarkdownChange,
+                                                        onClear = onNavigateBack,
+                                                        onPasteAgain = onPasteInPlace,
+                                                        onSaveFile = onSaveFile,
+                                                        onCopy = onCopy,
+                                                        onOpenSettings = onOpenSettings,
+                                                        snackbarHostState = snackbarHostState,
+                                                        isCopyButtonHidden = isPrimaryActionButtonHidden,
+                                                        onCopyButtonPlaced = onButtonPlaced
+                                                    )
+                                                }
 
-                                            AppScreen.SETTINGS -> {
-                                                SettingsScreen(
-                                                    settings = settings,
-                                                    repository = settingsRepository,
-                                                    onNavigateBack = onNavigateBack,
-                                                    snackbarHostState = snackbarHostState,
-                                                    onResetCompleted = onResetCompleted
-                                                )
+                                                AppScreen.SETTINGS -> {
+                                                    SettingsScreen(
+                                                        settings = settings,
+                                                        repository = settingsRepository,
+                                                        onNavigateBack = onNavigateBack,
+                                                        snackbarHostState = snackbarHostState,
+                                                        onResetCompleted = onResetCompleted
+                                                    )
+                                                }
                                             }
                                         }
                                     }
                                 }
                             }
+                        }
+
+                        if (showButtonMorphOverlay && validPasteBounds != null && validCopyBounds != null) {
+                            ExpressiveButtonMorphOverlay(
+                                pasteBounds = validPasteBounds,
+                                copyBounds = validCopyBounds,
+                                spatialProgress = {
+                                    when {
+                                        activePasteCopyForward -> {
+                                            val raw = if (resetForwardProgressBeforeAnimate) {
+                                                0f
+                                            } else {
+                                                forwardSpatialProgress.value
+                                            }
+                                            if (forwardOutgoingScreen == AppScreen.PASTE) raw else 1f - raw
+                                        }
+                                        activePasteCopyBack -> {
+                                            val raw = if (resetBackProgressBeforeAnimate) {
+                                                backResetInitialSpatial
+                                            } else {
+                                                backSpatialProgress.value
+                                            }
+                                            if (topScreen == AppScreen.PREVIEW) 1f - raw else raw
+                                        }
+                                        else -> 0f
+                                    }
+                                },
+                                effectsProgress = {
+                                    when {
+                                        activePasteCopyForward -> {
+                                            val raw = if (resetForwardProgressBeforeAnimate) {
+                                                0f
+                                            } else {
+                                                forwardProgress.value.coerceIn(0f, 1f)
+                                            }
+                                            if (forwardOutgoingScreen == AppScreen.PASTE) raw else 1f - raw
+                                        }
+                                        activePasteCopyBack -> {
+                                            val raw = if (resetBackProgressBeforeAnimate) {
+                                                backResetInitialEffects
+                                            } else {
+                                                backProgress.value.coerceIn(0f, 1f)
+                                            }
+                                            if (topScreen == AppScreen.PREVIEW) 1f - raw else raw
+                                        }
+                                        else -> 0f
+                                    }
+                                },
+                                pasteLabel = stringResource(R.string.action_paste),
+                                copyLabel = stringResource(R.string.action_copy_markdown),
+                                copyEnabled = markdownText.isNotEmpty()
+                            )
                         }
                     }
                 }
