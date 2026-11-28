@@ -16,6 +16,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -151,7 +152,11 @@ fun MyApplicationTheme(
         colorScheme = colorScheme,
         motionScheme = MotionScheme.expressive(),
         shapes = ExpressiveShapes,
-        typography = Typography,
-        content = content
-    )
+        typography = Typography
+    ) {
+        CompositionLocalProvider(
+            LocalReducedMotion provides rememberIsReducedMotionEnabled(),
+            content = content
+        )
+    }
 }

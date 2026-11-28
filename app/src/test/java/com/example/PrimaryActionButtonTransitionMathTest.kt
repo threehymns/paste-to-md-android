@@ -11,6 +11,7 @@ import com.example.ui.computePressMorphCornerShape
 import com.example.ui.interpolateMorphButtonRect
 import com.example.ui.interpolatedCornerShape
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -72,6 +73,15 @@ class PrimaryActionButtonTransitionMathTest {
         assertEquals(1f, overshotStart.pasteAlpha, 0.001f)
         assertEquals(0f, overshotStart.copyAlpha, 0.001f)
         assertEquals(0f, overshotStart.midFlightArc, 0.001f)
+
+        for (i in 0..100) {
+            val progress = i / 100f
+            val visuals = computeMorphContentVisuals(progress)
+            assertFalse(
+                "Paste and Copy labels must never overlap at progress=$progress",
+                visuals.pasteAlpha > 0f && visuals.copyAlpha > 0f
+            )
+        }
     }
 
     @Test

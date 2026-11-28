@@ -13,8 +13,6 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.Easing
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -57,9 +55,12 @@ import com.example.ui.computeRelativeButtonRect
 import com.example.ui.rememberPrimaryActionPressState
 import com.example.ui.settings.SettingsScreen
 import com.example.ui.theme.BrandFontFamily
+import com.example.ui.theme.LocalReducedMotion
 import com.example.ui.theme.MonoFontFamily
+import com.example.ui.theme.MotionTokens
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.PlainFontFamily
+import com.example.ui.theme.ReducedMotionOpacityScale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -89,30 +90,24 @@ private val BackStackSaver = listSaver<List<AppScreen>, String>(
 // Full-screen fade-through transitions.
 // Back: outgoing scales 100% -> 90% and fades out by 35%; incoming scales 110% -> 100% and fades in.
 // Forward: outgoing scales 100% -> 96% and fades out by 35%; incoming scales 94% -> 100% and fades in.
-private val PredictiveBackEasing: Easing = CubicBezierEasing(0.1f, 0.1f, 0f, 1f)
-private const val FadeThroughThreshold = 0.35f
-private const val BackExitScaleTarget = 0.9f
-private const val BackEnterScaleStart = 1.1f
-private const val ForwardExitScaleTarget = 0.96f
-private const val ForwardEnterScaleStart = 0.94f
-
 private fun fadeThroughExitAlpha(progress: Float): Float =
-    (1f - progress / FadeThroughThreshold).coerceIn(0f, 1f)
+    (1f - progress / MotionTokens.ScreenFadeThroughThreshold).coerceIn(0f, 1f)
 
 private fun fadeThroughEnterAlpha(progress: Float): Float =
-    ((progress - FadeThroughThreshold) / (1f - FadeThroughThreshold)).coerceIn(0f, 1f)
+    ((progress - MotionTokens.ScreenFadeThroughThreshold) / (1f - MotionTokens.ScreenFadeThroughThreshold))
+        .coerceIn(0f, 1f)
 
 private fun backExitScale(progress: Float): Float =
-    1f + (BackExitScaleTarget - 1f) * progress
+    1f + (MotionTokens.BackExitScaleTarget - 1f) * progress
 
 private fun backEnterScale(progress: Float): Float =
-    BackEnterScaleStart + (1f - BackEnterScaleStart) * progress
+    MotionTokens.BackEnterScaleStart + (1f - MotionTokens.BackEnterScaleStart) * progress
 
 private fun forwardExitScale(progress: Float): Float =
-    1f + (ForwardExitScaleTarget - 1f) * progress
+    1f + (MotionTokens.ForwardExitScaleTarget - 1f) * progress
 
 private fun forwardEnterScale(progress: Float): Float =
-    ForwardEnterScaleStart + (1f - ForwardEnterScaleStart) * progress
+    MotionTokens.ForwardEnterScaleStart + (1f - MotionTokens.ForwardEnterScaleStart) * progress
 
 internal fun writeMarkdownToUri(
     contentResolver: ContentResolver,
@@ -234,6 +229,7 @@ class MainActivity : ComponentActivity() {
                 dynamicColor = settings.dynamicColor
             ) {
                 val motionScheme = MaterialTheme.motionScheme
+                val reducedMotion = LocalReducedMotion.current
                 val screenStateHolder = rememberSaveableStateHolder()
 
                 val backProgress = remember { Animatable(0f) }
@@ -293,7 +289,15 @@ class MainActivity : ComponentActivity() {
                         resetForwardProgressBeforeAnimate = false
                     }
 
-                    if (animateSpatialButton) {
+                    if (reducedMotion) {
+                        forwardSpatialProgress.snapTo(1f)
+                        withContext(ReducedMotionOpacityScale) {
+                            forwardProgress.animateTo(
+                                targetValue = 1f,
+                                animationSpec = MotionTokens.reducedFadeSpec()
+                            )
+                        }
+                    } else if (animateSpatialButton) {
                         coroutineScope {
                             launch {
                                 forwardProgress.animateTo(
@@ -485,7 +489,15 @@ class MainActivity : ComponentActivity() {
                         backResetInitialSpatial = 0f
                     }
 
-                    if (animateSpatialButton) {
+                    if (reducedMotion) {
+                        backSpatialProgress.snapTo(target)
+                        withContext(ReducedMotionOpacityScale) {
+                            backProgress.animateTo(
+                                targetValue = target,
+                                animationSpec = MotionTokens.reducedFadeSpec()
+                            )
+                        }
+                    } else if (animateSpatialButton) {
                         coroutineScope {
                             launch {
                                 backProgress.animateTo(
@@ -580,7 +592,7 @@ class MainActivity : ComponentActivity() {
                             backProgress.snapTo(
                                 initialProgress + remainingProgress * eventProgress
                             )
-                            val easedEvent = PredictiveBackEasing.transform(eventProgress)
+                            val easedEvent = MotionTokens.PredictiveBackGestureEasing.transform(eventProgress)
                             backSpatialProgress.snapTo(
                                 initialSpatial + remainingSpatial * easedEvent
                             )
@@ -628,7 +640,8 @@ class MainActivity : ComponentActivity() {
                 val validCopyBounds = copyMeasuredBounds
                     ?.takeIf { it.containerSize == rootContainerSize }
                     ?.rect
-                val showButtonMorphOverlay = (activePasteCopyForward || activePasteCopyBack) &&
+                val showButtonMorphOverlay = !reducedMotion &&
+                    (activePasteCopyForward || activePasteCopyBack) &&
                     validPasteBounds != null &&
                     validCopyBounds != null
                 val latestShowButtonMorphOverlay by rememberUpdatedState(showButtonMorphOverlay)
@@ -690,11 +703,15 @@ class MainActivity : ComponentActivity() {
                                                     } else {
                                                         backProgress.value.coerceIn(0f, 1f)
                                                     }
-                                                    val eased = PredictiveBackEasing.transform(progress)
-                                                    val scale = if (isTop) {
-                                                        backExitScale(eased)
+                                                    val scale = if (reducedMotion) {
+                                                        1f
                                                     } else {
-                                                        backEnterScale(eased)
+                                                        val eased = MotionTokens.PredictiveBackGestureEasing.transform(progress)
+                                                        if (isTop) {
+                                                            backExitScale(eased)
+                                                        } else {
+                                                            backEnterScale(eased)
+                                                        }
                                                     }
                                                     alpha = if (isTop) {
                                                         fadeThroughExitAlpha(progress)
@@ -710,7 +727,9 @@ class MainActivity : ComponentActivity() {
                                                     } else {
                                                         forwardProgress.value.coerceIn(0f, 1f)
                                                     }
-                                                    val scale = if (isTop) {
+                                                    val scale = if (reducedMotion) {
+                                                        1f
+                                                    } else if (isTop) {
                                                         forwardEnterScale(progress)
                                                     } else {
                                                         forwardExitScale(progress)

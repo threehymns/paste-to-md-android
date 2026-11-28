@@ -81,7 +81,9 @@ import androidx.compose.ui.unit.dp
 import com.example.ui.AppIcons
 import com.example.ui.ExpressivePrimaryActionButton
 import com.example.ui.ExpressiveSnackbarHost
+import com.example.ui.theme.LocalReducedMotion
 import com.example.ui.theme.MonoFontFamily
+import com.example.ui.theme.MotionTokens
 
 private val PreviewMaxContentWidth = 720.dp
 private val PreviewHorizontalMaxContentWidth = 1040.dp
@@ -129,6 +131,7 @@ fun MarkdownPreviewScreen(
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val motionScheme = MaterialTheme.motionScheme
+    val reducedMotion = LocalReducedMotion.current
     val bodyTextStyle = MaterialTheme.typography.bodyLarge
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
@@ -196,26 +199,34 @@ fun MarkdownPreviewScreen(
 
                     AnimatedVisibility(
                         visible = !isKeyboardOpen,
-                        enter = expandHorizontally(
-                            animationSpec = motionScheme.defaultSpatialSpec(),
-                            expandFrom = Alignment.Start,
-                            clip = false
-                        ) + slideInHorizontally(
-                            animationSpec = motionScheme.defaultSpatialSpec(),
-                            initialOffsetX = { sidePanelOffscreenClearancePx }
-                        ) + fadeIn(
-                            animationSpec = motionScheme.defaultEffectsSpec()
-                        ),
-                        exit = shrinkHorizontally(
-                            animationSpec = motionScheme.defaultSpatialSpec(),
-                            shrinkTowards = Alignment.Start,
-                            clip = false
-                        ) + slideOutHorizontally(
-                            animationSpec = motionScheme.defaultSpatialSpec(),
-                            targetOffsetX = { sidePanelOffscreenClearancePx }
-                        ) + fadeOut(
-                            animationSpec = motionScheme.slowEffectsSpec()
-                        ),
+                        enter = if (reducedMotion) {
+                            fadeIn(MotionTokens.reducedFadeSpec())
+                        } else {
+                            expandHorizontally(
+                                animationSpec = motionScheme.defaultSpatialSpec(),
+                                expandFrom = Alignment.Start,
+                                clip = false
+                            ) + slideInHorizontally(
+                                animationSpec = motionScheme.defaultSpatialSpec(),
+                                initialOffsetX = { sidePanelOffscreenClearancePx }
+                            ) + fadeIn(
+                                animationSpec = motionScheme.defaultEffectsSpec()
+                            )
+                        },
+                        exit = if (reducedMotion) {
+                            fadeOut(MotionTokens.reducedFadeSpec())
+                        } else {
+                            shrinkHorizontally(
+                                animationSpec = motionScheme.defaultSpatialSpec(),
+                                shrinkTowards = Alignment.Start,
+                                clip = false
+                            ) + slideOutHorizontally(
+                                animationSpec = motionScheme.defaultSpatialSpec(),
+                                targetOffsetX = { sidePanelOffscreenClearancePx }
+                            ) + fadeOut(
+                                animationSpec = motionScheme.slowEffectsSpec()
+                            )
+                        },
                         label = "preview_side_actions_visibility"
                     ) {
                         val isActionsSettledVisible = !isKeyboardOpen &&
@@ -313,26 +324,34 @@ fun MarkdownPreviewScreen(
 
                     AnimatedVisibility(
                         visible = !isKeyboardOpen,
-                        enter = expandVertically(
-                            animationSpec = motionScheme.defaultSpatialSpec(),
-                            expandFrom = Alignment.Top,
-                            clip = false
-                        ) + slideInVertically(
-                            animationSpec = motionScheme.defaultSpatialSpec(),
-                            initialOffsetY = { footerOffscreenClearancePx }
-                        ) + fadeIn(
-                            animationSpec = motionScheme.defaultEffectsSpec()
-                        ),
-                        exit = shrinkVertically(
-                            animationSpec = motionScheme.defaultSpatialSpec(),
-                            shrinkTowards = Alignment.Top,
-                            clip = false
-                        ) + slideOutVertically(
-                            animationSpec = motionScheme.defaultSpatialSpec(),
-                            targetOffsetY = { footerOffscreenClearancePx }
-                        ) + fadeOut(
-                            animationSpec = motionScheme.slowEffectsSpec()
-                        ),
+                        enter = if (reducedMotion) {
+                            fadeIn(MotionTokens.reducedFadeSpec())
+                        } else {
+                            expandVertically(
+                                animationSpec = motionScheme.defaultSpatialSpec(),
+                                expandFrom = Alignment.Top,
+                                clip = false
+                            ) + slideInVertically(
+                                animationSpec = motionScheme.defaultSpatialSpec(),
+                                initialOffsetY = { footerOffscreenClearancePx }
+                            ) + fadeIn(
+                                animationSpec = motionScheme.defaultEffectsSpec()
+                            )
+                        },
+                        exit = if (reducedMotion) {
+                            fadeOut(MotionTokens.reducedFadeSpec())
+                        } else {
+                            shrinkVertically(
+                                animationSpec = motionScheme.defaultSpatialSpec(),
+                                shrinkTowards = Alignment.Top,
+                                clip = false
+                            ) + slideOutVertically(
+                                animationSpec = motionScheme.defaultSpatialSpec(),
+                                targetOffsetY = { footerOffscreenClearancePx }
+                            ) + fadeOut(
+                                animationSpec = motionScheme.slowEffectsSpec()
+                            )
+                        },
                         label = "preview_footer_visibility"
                     ) {
                         val isFooterSettledVisible = !isKeyboardOpen &&

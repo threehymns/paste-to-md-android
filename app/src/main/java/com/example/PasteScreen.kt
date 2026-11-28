@@ -5,6 +5,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -58,6 +60,8 @@ import androidx.compose.ui.unit.dp
 import com.example.ui.AppIcons
 import com.example.ui.ExpressivePrimaryActionButton
 import com.example.ui.ExpressiveSnackbarHost
+import com.example.ui.theme.LocalReducedMotion
+import com.example.ui.theme.MotionTokens
 
 private val PasteMaxContentWidth = 560.dp
 private val PasteHorizontalMaxContentWidth = 680.dp
@@ -199,7 +203,7 @@ private fun PasteHeroBadge(
     badgeSize: Dp,
     modifier: Modifier = Modifier
 ) {
-    val motionScheme = MaterialTheme.motionScheme
+    val reducedMotion = LocalReducedMotion.current
 
     Surface(
         shape = MaterialShapes.Cookie9Sided.toShape(),
@@ -213,8 +217,21 @@ private fun PasteHeroBadge(
             AnimatedContent(
                 targetState = isConverting,
                 transitionSpec = {
-                    fadeIn(motionScheme.defaultEffectsSpec()) togetherWith
-                        fadeOut(motionScheme.fastEffectsSpec())
+                    if (reducedMotion) {
+                        fadeIn(MotionTokens.reducedFadeSpec()) togetherWith
+                            fadeOut(MotionTokens.reducedFadeSpec())
+                    } else {
+                        (fadeIn(MotionTokens.fastUiSpec()) +
+                            scaleIn(
+                                initialScale = MotionTokens.ContentSwapMinScale,
+                                animationSpec = MotionTokens.fastUiSpec()
+                            )) togetherWith
+                            (fadeOut(MotionTokens.quickExitSpec()) +
+                                scaleOut(
+                                    targetScale = MotionTokens.ContentSwapMinScale,
+                                    animationSpec = MotionTokens.quickExitSpec()
+                                ))
+                    }
                 },
                 label = "paste_hero_indicator"
             ) { converting ->

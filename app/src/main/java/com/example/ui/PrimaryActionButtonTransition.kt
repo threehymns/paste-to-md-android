@@ -45,7 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.dp
+import com.example.ui.theme.MotionTokens
 import kotlin.math.PI
 import kotlin.math.roundToInt
 import kotlin.math.sin
@@ -236,13 +236,6 @@ internal data class MorphContentVisuals(
     val midFlightArc: Float
 )
 
-private const val PasteExitEnd = 0.42f
-private const val CopyEnterStart = 0.34f
-private const val CopyEnterSpan = 0.46f
-private const val ContentMinScale = 0.92f
-private val ExpressiveMidFlightElevation = 6.dp
-private val ContentVerticalTravel = 8.dp
-
 /**
  * Computes symmetric fade-through alpha, subtle scale, and mid-flight arc for
  * Paste (0f) <-> Copy (1f) so both forward transitions and interactive Predictive Back
@@ -250,14 +243,16 @@ private val ContentVerticalTravel = 8.dp
  */
 internal fun computeMorphContentVisuals(progress: Float): MorphContentVisuals {
     val clamped = progress.coerceIn(0f, 1f)
-    val pasteExitFraction = (clamped / PasteExitEnd).coerceIn(0f, 1f)
-    val copyEnterFraction = ((clamped - CopyEnterStart) / CopyEnterSpan).coerceIn(0f, 1f)
+    val pasteExitFraction = (clamped / MotionTokens.MorphPasteExitEnd).coerceIn(0f, 1f)
+    val copyEnterFraction = (
+        (clamped - MotionTokens.MorphCopyEnterStart) / MotionTokens.MorphCopyEnterSpan
+    ).coerceIn(0f, 1f)
     val midFlightArc = sin(clamped * PI).toFloat().coerceIn(0f, 1f)
     return MorphContentVisuals(
         pasteAlpha = 1f - pasteExitFraction,
         copyAlpha = copyEnterFraction,
-        pasteScale = lerpUnclamped(1f, ContentMinScale, pasteExitFraction),
-        copyScale = lerpUnclamped(ContentMinScale, 1f, copyEnterFraction),
+        pasteScale = lerpUnclamped(1f, MotionTokens.ContentSwapMinScale, pasteExitFraction),
+        copyScale = lerpUnclamped(MotionTokens.ContentSwapMinScale, 1f, copyEnterFraction),
         midFlightArc = midFlightArc
     )
 }
@@ -320,7 +315,7 @@ internal fun ExpressiveButtonMorphOverlay(
                 }
                 .testTag("primary_action_morph_overlay")
                 .graphicsLayer {
-                    val visuals = computeMorphContentVisuals(spatialProgress())
+                    val visuals = computeMorphContentVisuals(effectsProgress().coerceIn(0f, 1f))
                     shape = computePressMorphCornerShape(
                         restingShape = restingShape,
                         pressedShape = pressedShape,
@@ -329,7 +324,7 @@ internal fun ExpressiveButtonMorphOverlay(
                         density = this
                     )
                     clip = true
-                    shadowElevation = ExpressiveMidFlightElevation.toPx() * visuals.midFlightArc
+                    shadowElevation = MotionTokens.MorphMidFlightElevation.toPx() * visuals.midFlightArc
                 }
                 .drawBehind {
                     val colorFraction = effectsProgress().coerceIn(0f, 1f)
@@ -345,12 +340,12 @@ internal fun ExpressiveButtonMorphOverlay(
                     modifier = Modifier
                         .padding(ButtonDefaults.MediumContentPadding)
                         .graphicsLayer {
-                            val clamped = spatialProgress().coerceIn(0f, 1f)
+                            val clamped = effectsProgress().coerceIn(0f, 1f)
                             val visuals = computeMorphContentVisuals(clamped)
                             alpha = visuals.pasteAlpha
                             scaleX = visuals.pasteScale
                             scaleY = visuals.pasteScale
-                            translationY = ContentVerticalTravel.toPx() * clamped
+                            translationY = MotionTokens.MorphContentVerticalTravel.toPx() * clamped
                         }
                 ) {
                     Icon(
@@ -376,12 +371,12 @@ internal fun ExpressiveButtonMorphOverlay(
                     modifier = Modifier
                         .padding(ButtonDefaults.MediumContentPadding)
                         .graphicsLayer {
-                            val clamped = spatialProgress().coerceIn(0f, 1f)
+                            val clamped = effectsProgress().coerceIn(0f, 1f)
                             val visuals = computeMorphContentVisuals(clamped)
                             alpha = visuals.copyAlpha
                             scaleX = visuals.copyScale
                             scaleY = visuals.copyScale
-                            translationY = -ContentVerticalTravel.toPx() * (1f - clamped)
+                            translationY = -MotionTokens.MorphContentVerticalTravel.toPx() * (1f - clamped)
                         }
                 ) {
                     Icon(
