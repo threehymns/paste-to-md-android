@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import com.example.ui.AppIcons
 import com.example.ui.ExpressivePrimaryActionButton
 import com.example.ui.ExpressiveSnackbarHost
+import com.example.ui.computePressScale
 import com.example.ui.theme.LocalReducedMotion
 import com.example.ui.theme.MotionTokens
 
@@ -120,7 +121,8 @@ fun PasteToMarkdownScreen(
                 ) {
                     PasteHeroBadge(
                         isConverting = isConverting,
-                        badgeSize = heroSize
+                        badgeSize = heroSize,
+                        pressShapeFraction = pressShapeFraction
                     )
 
                     PasteActionSection(
@@ -152,7 +154,8 @@ fun PasteToMarkdownScreen(
                 ) {
                     PasteHeroBadge(
                         isConverting = isConverting,
-                        badgeSize = PasteHeroCompactSize
+                        badgeSize = PasteHeroCompactSize,
+                        pressShapeFraction = pressShapeFraction
                     )
 
                     Spacer(modifier = Modifier.height(4.dp))
@@ -201,6 +204,7 @@ fun PasteToMarkdownScreen(
 private fun PasteHeroBadge(
     isConverting: Boolean,
     badgeSize: Dp,
+    pressShapeFraction: (() -> Float)? = null,
     modifier: Modifier = Modifier
 ) {
     val reducedMotion = LocalReducedMotion.current
@@ -211,6 +215,15 @@ private fun PasteHeroBadge(
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         modifier = modifier
             .size(badgeSize)
+            .graphicsLayer {
+                if (!reducedMotion && pressShapeFraction != null) {
+                    val fraction = pressShapeFraction().coerceIn(-0.12f, 1.0f)
+                    val scale = computePressScale(fraction, reducedMotion = false)
+                    scaleX = scale
+                    scaleY = scale
+                    rotationZ = -3f * fraction
+                }
+            }
             .testTag("paste_hero_icon")
     ) {
         Box(contentAlignment = Alignment.Center) {
