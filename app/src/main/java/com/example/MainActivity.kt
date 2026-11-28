@@ -475,7 +475,7 @@ class MainActivity : ComponentActivity() {
                 val latestPasteInPlace by rememberUpdatedState { pasteFromClipboard(false) }
                 val latestOpenSettings by rememberUpdatedState { navigateTo(AppScreen.SETTINGS) }
                 val latestNavigateBack by rememberUpdatedState { navigateBack() }
-                val latestCopy by rememberUpdatedState { copyToClipboard() }
+                val latestCopy by rememberUpdatedState { copyToClipboard(showMessage = false) }
                 val latestSaveFile by rememberUpdatedState { saveFileLauncher.launch("converted.md") }
                 val latestResetFeedback by rememberUpdatedState {
                     showFeedback(context.getString(R.string.feedback_settings_reset))

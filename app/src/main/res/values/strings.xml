@@ -55,6 +55,7 @@
     <string name="action_paste_again">Paste Again</string>
     <string name="action_save_file">Save file</string>
     <string name="action_copy_markdown">Copy Markdown</string>
+    <string name="action_copied">Copied</string>
     <string name="feedback_file_saved">File saved successfully</string>
     <string name="feedback_file_save_error">Error saving file</string>
     <string name="feedback_copied">Markdown copied to clipboard</string>

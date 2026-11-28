@@ -145,4 +145,26 @@ class ClipboardReliabilityTest {
         )
         assertFalse(nullStreamSuccess)
     }
+
+    @Test
+    fun manualCopyWritesClipboardWithInlineConfirmationAndNoSnackbar() {
+        val activity = composeTestRule.activity
+        val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+
+        clipboard.setPrimaryClip(ClipData.newHtmlText("doc", "Hello", "<h1>Hello</h1>"))
+        composeTestRule.onNodeWithTag("paste_button").performClick()
+        composeTestRule.waitForIdle()
+
+        composeTestRule.onNodeWithTag("markdown_text_field").assertTextContains("# Hello", substring = true)
+
+        composeTestRule.mainClock.autoAdvance = false
+        composeTestRule.onNodeWithTag("copy_button").performClick()
+        composeTestRule.mainClock.advanceTimeBy(220L)
+        composeTestRule.waitForIdle()
+
+        val copiedClip = clipboard.primaryClip
+        assertEquals("# Hello", copiedClip?.getItemAt(0)?.text?.toString()?.trim())
+        composeTestRule.onNodeWithText("Copied").assertIsDisplayed()
+        composeTestRule.onNodeWithText("Markdown copied to clipboard").assertDoesNotExist()
+    }
 }

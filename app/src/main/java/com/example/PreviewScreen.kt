@@ -1,10 +1,15 @@
 package com.example
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,6 +54,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -62,6 +68,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -73,7 +82,10 @@ import com.example.ui.ExpressiveSnackbarHost
 import com.example.ui.PreviewKeyboardAnimatedContainer
 import com.example.ui.PreviewKeyboardRevealOrientation
 import com.example.ui.rememberPreviewImeTransitionState
+import com.example.ui.theme.LocalReducedMotion
 import com.example.ui.theme.MonoFontFamily
+import com.example.ui.theme.MotionTokens
+import kotlinx.coroutines.delay
 
 private val PreviewMaxContentWidth = 720.dp
 private val PreviewHorizontalMaxContentWidth = 1040.dp
@@ -130,6 +142,36 @@ fun MarkdownPreviewScreen(
             baseFontSize = bodyTextStyle.fontSize,
             codeFontFamily = MonoFontFamily
         )
+    }
+
+    var copyConfirmationGeneration by remember { mutableIntStateOf(0) }
+    var showCopyConfirmed by remember { mutableStateOf(false) }
+
+    LaunchedEffect(copyConfirmationGeneration) {
+        if (copyConfirmationGeneration == 0) return@LaunchedEffect
+        showCopyConfirmed = true
+        delay(MotionTokens.DurationCopyConfirmHoldMs)
+        showCopyConfirmed = false
+    }
+
+    LaunchedEffect(markdownText) {
+        if (showCopyConfirmed) {
+            showCopyConfirmed = false
+            copyConfirmationGeneration = 0
+        }
+    }
+
+    val handleCopyClick: () -> Unit = {
+        onCopy()
+        copyConfirmationGeneration++
+    }
+
+    val handleClearClick: () -> Unit = {
+        if (showCopyConfirmed) {
+            showCopyConfirmed = false
+            copyConfirmationGeneration = 0
+        }
+        onClear()
     }
 
     Scaffold(
@@ -228,7 +270,7 @@ fun MarkdownPreviewScreen(
                                 ) {
                                     PreviewClearButton(
                                         enabled = markdownText.isNotEmpty(),
-                                        onClick = onClear
+                                        onClick = handleClearClick
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     PreviewSaveFileButton(
@@ -249,7 +291,8 @@ fun MarkdownPreviewScreen(
 
                                 PreviewCopyActionButton(
                                     enabled = markdownText.isNotEmpty(),
-                                    onClick = onCopy,
+                                    isCopied = showCopyConfirmed,
+                                    onClick = handleCopyClick,
                                     interactionSource = copyInteractionSource,
                                     pressShapeFraction = pressShapeFraction,
                                     isCopyButtonHidden = isCopyButtonHidden,
@@ -318,7 +361,7 @@ fun MarkdownPreviewScreen(
                             ) {
                                 PreviewClearButton(
                                     enabled = markdownText.isNotEmpty(),
-                                    onClick = onClear
+                                    onClick = handleClearClick
                                 )
 
                                 Spacer(modifier = Modifier.width(6.dp))
@@ -344,7 +387,8 @@ fun MarkdownPreviewScreen(
 
                             PreviewCopyActionButton(
                                 enabled = markdownText.isNotEmpty(),
-                                onClick = onCopy,
+                                isCopied = showCopyConfirmed,
+                                onClick = handleCopyClick,
                                 interactionSource = copyInteractionSource,
                                 pressShapeFraction = pressShapeFraction,
                                 isCopyButtonHidden = isCopyButtonHidden,
@@ -522,8 +566,10 @@ private fun PreviewCopyActionButton(
     interactionSource: MutableInteractionSource?,
     pressShapeFraction: (() -> Float)?,
     isCopyButtonHidden: () -> Boolean,
-    onPositioned: ((LayoutCoordinates) -> Unit)?
+    onPositioned: ((LayoutCoordinates) -> Unit)?,
+    isCopied: Boolean = false
 ) {
+    val reducedMotion = LocalReducedMotion.current
     ExpressivePrimaryActionButton(
         onClick = onClick,
         enabled = enabled,
@@ -540,19 +586,56 @@ private fun PreviewCopyActionButton(
                 }
             )
             .graphicsLayer { alpha = if (isCopyButtonHidden()) 0f else 1f }
+            .semantics {
+                if (isCopied) {
+                    liveRegion = LiveRegionMode.Polite
+                }
+            }
             .testTag("copy_button")
     ) {
-        Icon(
-            imageVector = AppIcons.ContentCopy,
-            contentDescription = null,
-            modifier = Modifier.size(ButtonDefaults.MediumIconSize)
-        )
-        Spacer(modifier = Modifier.width(ButtonDefaults.MediumIconSpacing))
-        Text(
-            text = stringResource(R.string.action_copy_markdown),
-            style = MaterialTheme.typography.titleMediumEmphasized,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+        AnimatedContent(
+            targetState = isCopied,
+            transitionSpec = {
+                val enter = if (reducedMotion) {
+                    fadeIn(MotionTokens.reducedFadeSpec())
+                } else {
+                    fadeIn(MotionTokens.fastUiSpec()) + scaleIn(
+                        initialScale = MotionTokens.ContentSwapMinScale,
+                        animationSpec = MotionTokens.fastUiSpec()
+                    )
+                }
+                val exit = if (reducedMotion) {
+                    fadeOut(MotionTokens.reducedFadeSpec())
+                } else {
+                    fadeOut(MotionTokens.quickExitSpec()) + scaleOut(
+                        targetScale = MotionTokens.ContentSwapMinScale,
+                        animationSpec = MotionTokens.quickExitSpec()
+                    )
+                }
+                (enter togetherWith exit).using(SizeTransform(clip = false))
+            },
+            contentAlignment = Alignment.Center,
+            label = "copy_button_confirmation"
+        ) { copied ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Icon(
+                    imageVector = if (copied) AppIcons.Check else AppIcons.ContentCopy,
+                    contentDescription = null,
+                    modifier = Modifier.size(ButtonDefaults.MediumIconSize)
+                )
+                Spacer(modifier = Modifier.width(ButtonDefaults.MediumIconSpacing))
+                Text(
+                    text = stringResource(
+                        if (copied) R.string.action_copied else R.string.action_copy_markdown
+                    ),
+                    style = MaterialTheme.typography.titleMediumEmphasized,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
     }
 }
