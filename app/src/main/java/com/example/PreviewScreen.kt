@@ -1,23 +1,15 @@
 package com.example
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.EnterExitState
-import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -29,9 +21,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.union
@@ -58,7 +48,6 @@ import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,9 +70,10 @@ import androidx.compose.ui.unit.dp
 import com.example.ui.AppIcons
 import com.example.ui.ExpressivePrimaryActionButton
 import com.example.ui.ExpressiveSnackbarHost
-import com.example.ui.theme.LocalReducedMotion
+import com.example.ui.PreviewKeyboardAnimatedContainer
+import com.example.ui.PreviewKeyboardRevealOrientation
+import com.example.ui.rememberPreviewImeTransitionState
 import com.example.ui.theme.MonoFontFamily
-import com.example.ui.theme.MotionTokens
 
 private val PreviewMaxContentWidth = 720.dp
 private val PreviewHorizontalMaxContentWidth = 1040.dp
@@ -94,21 +84,14 @@ private val PreviewSidePanelExpandedWidth = 244.dp
 private val PreviewHorizontalPadding = 16.dp
 private val PreviewVerticalPadding = 12.dp
 private val FooterOffscreenBuffer = 24.dp
+private val KeyboardScrubPeekOffset = 16.dp
 
 internal fun shouldUseHorizontalPreviewLayout(maxWidth: Dp, maxHeight: Dp): Boolean =
     maxWidth > maxHeight && maxWidth >= PreviewHorizontalMinWidth
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun rememberIsImeVisible(): Boolean {
-    val density = LocalDensity.current
-    val imeInsets = WindowInsets.ime
-    val isImeVisibleFlag = WindowInsets.isImeVisible
-    val hasImeHeight by remember(imeInsets, density) {
-        derivedStateOf { imeInsets.getBottom(density) > 0 }
-    }
-    return isImeVisibleFlag || hasImeHeight
-}
+internal fun rememberIsImeVisible(): Boolean =
+    rememberPreviewImeTransitionState().isKeyboardOpen
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -126,15 +109,21 @@ fun MarkdownPreviewScreen(
     onCopyButtonPlaced: ((LayoutCoordinates) -> Unit)? = null,
     copyInteractionSource: MutableInteractionSource? = null,
     pressShapeFraction: (() -> Float)? = null,
-    isKeyboardOpen: Boolean = rememberIsImeVisible(),
+    isKeyboardOpen: Boolean? = null,
+    imeDismissProgress: Float? = null,
     modifier: Modifier = Modifier
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    val motionScheme = MaterialTheme.motionScheme
-    val reducedMotion = LocalReducedMotion.current
     val bodyTextStyle = MaterialTheme.typography.bodyLarge
     val density = LocalDensity.current
     val layoutDirection = LocalLayoutDirection.current
+    val liveImeState = rememberPreviewImeTransitionState()
+    val effectiveKeyboardOpen = isKeyboardOpen ?: liveImeState.isKeyboardOpen
+    val effectiveDismissProgress = if (isKeyboardOpen != null) {
+        imeDismissProgress
+    } else {
+        imeDismissProgress ?: liveImeState.dismissProgress
+    }
     val syntaxHighlighter = remember(colorScheme, bodyTextStyle.fontSize) {
         MarkdownSyntaxHighlighter(
             colorScheme = colorScheme,
@@ -162,6 +151,9 @@ fun MarkdownPreviewScreen(
             with(density) {
                 (endInsetPadding + PreviewHorizontalPadding + FooterOffscreenBuffer).roundToPx()
             }
+        }
+        val scrubPeekOffsetPx = remember(density) {
+            with(density) { KeyboardScrubPeekOffset.roundToPx() }
         }
 
         BoxWithConstraints(
@@ -197,41 +189,13 @@ fun MarkdownPreviewScreen(
                             .fillMaxHeight()
                     )
 
-                    AnimatedVisibility(
-                        visible = !isKeyboardOpen,
-                        enter = if (reducedMotion) {
-                            fadeIn(MotionTokens.reducedFadeSpec())
-                        } else {
-                            expandHorizontally(
-                                animationSpec = motionScheme.defaultSpatialSpec(),
-                                expandFrom = Alignment.Start,
-                                clip = false
-                            ) + slideInHorizontally(
-                                animationSpec = motionScheme.defaultSpatialSpec(),
-                                initialOffsetX = { sidePanelOffscreenClearancePx }
-                            ) + fadeIn(
-                                animationSpec = motionScheme.defaultEffectsSpec()
-                            )
-                        },
-                        exit = if (reducedMotion) {
-                            fadeOut(MotionTokens.reducedFadeSpec())
-                        } else {
-                            shrinkHorizontally(
-                                animationSpec = motionScheme.defaultSpatialSpec(),
-                                shrinkTowards = Alignment.Start,
-                                clip = false
-                            ) + slideOutHorizontally(
-                                animationSpec = motionScheme.defaultSpatialSpec(),
-                                targetOffsetX = { sidePanelOffscreenClearancePx }
-                            ) + fadeOut(
-                                animationSpec = motionScheme.slowEffectsSpec()
-                            )
-                        },
-                        label = "preview_side_actions_visibility"
-                    ) {
-                        val isActionsSettledVisible = !isKeyboardOpen &&
-                            transition.currentState == EnterExitState.Visible &&
-                            transition.targetState == EnterExitState.Visible
+                    PreviewKeyboardAnimatedContainer(
+                        isKeyboardOpen = effectiveKeyboardOpen,
+                        imeDismissProgress = effectiveDismissProgress,
+                        orientation = PreviewKeyboardRevealOrientation.Horizontal,
+                        offscreenClearancePx = sidePanelOffscreenClearancePx,
+                        scrubPeekOffsetPx = scrubPeekOffsetPx
+                    ) { isActionsSettledVisible ->
                         var latestCopyButtonCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
 
                         LaunchedEffect(isActionsSettledVisible, latestCopyButtonCoords, onCopyButtonPlaced) {
@@ -322,41 +286,13 @@ fun MarkdownPreviewScreen(
                             .weight(1f)
                     )
 
-                    AnimatedVisibility(
-                        visible = !isKeyboardOpen,
-                        enter = if (reducedMotion) {
-                            fadeIn(MotionTokens.reducedFadeSpec())
-                        } else {
-                            expandVertically(
-                                animationSpec = motionScheme.defaultSpatialSpec(),
-                                expandFrom = Alignment.Top,
-                                clip = false
-                            ) + slideInVertically(
-                                animationSpec = motionScheme.defaultSpatialSpec(),
-                                initialOffsetY = { footerOffscreenClearancePx }
-                            ) + fadeIn(
-                                animationSpec = motionScheme.defaultEffectsSpec()
-                            )
-                        },
-                        exit = if (reducedMotion) {
-                            fadeOut(MotionTokens.reducedFadeSpec())
-                        } else {
-                            shrinkVertically(
-                                animationSpec = motionScheme.defaultSpatialSpec(),
-                                shrinkTowards = Alignment.Top,
-                                clip = false
-                            ) + slideOutVertically(
-                                animationSpec = motionScheme.defaultSpatialSpec(),
-                                targetOffsetY = { footerOffscreenClearancePx }
-                            ) + fadeOut(
-                                animationSpec = motionScheme.slowEffectsSpec()
-                            )
-                        },
-                        label = "preview_footer_visibility"
-                    ) {
-                        val isFooterSettledVisible = !isKeyboardOpen &&
-                            transition.currentState == EnterExitState.Visible &&
-                            transition.targetState == EnterExitState.Visible
+                    PreviewKeyboardAnimatedContainer(
+                        isKeyboardOpen = effectiveKeyboardOpen,
+                        imeDismissProgress = effectiveDismissProgress,
+                        orientation = PreviewKeyboardRevealOrientation.Vertical,
+                        offscreenClearancePx = footerOffscreenClearancePx,
+                        scrubPeekOffsetPx = scrubPeekOffsetPx
+                    ) { isFooterSettledVisible ->
                         var latestCopyButtonCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
 
                         LaunchedEffect(isFooterSettledVisible, latestCopyButtonCoords, onCopyButtonPlaced) {

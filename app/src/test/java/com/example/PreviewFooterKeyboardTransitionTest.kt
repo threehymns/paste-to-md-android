@@ -332,4 +332,154 @@ class PreviewFooterKeyboardTransitionTest {
             footerBounds.top >= editorBounds.bottom
         )
     }
+
+    @Test
+    fun predictiveBackScrubRevealsFooterProportionallyAndCancelsOrCommitsCleanly() {
+        var keyboardOpen by mutableStateOf(false)
+        var dismissProgress by mutableStateOf<Float?>(null)
+        val reportedCopyButtonTops = mutableListOf<Float>()
+
+        composeTestRule.setContent {
+            MyApplicationTheme {
+                MarkdownPreviewScreen(
+                    markdownText = "# Predictive Back Preview",
+                    onMarkdownChange = {},
+                    onClear = {},
+                    onPasteAgain = {},
+                    onSaveFile = {},
+                    onCopy = {},
+                    onOpenSettings = {},
+                    onCopyButtonPlaced = { coords ->
+                        reportedCopyButtonTops += coords.positionInRoot().y
+                    },
+                    isKeyboardOpen = keyboardOpen,
+                    imeDismissProgress = dismissProgress
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        val restingToolbarBounds = composeTestRule
+            .onNodeWithTag("preview_floating_toolbar")
+            .getUnclippedBoundsInRoot()
+
+        // Open keyboard and let footer exit completely.
+        composeTestRule.runOnIdle { keyboardOpen = true }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("preview_footer").assertDoesNotExist()
+        val placementsWhileOpen = reportedCopyButtonTops.size
+
+        // Begin predictive back scrub while keyboard is still open (25% -> 60%).
+        composeTestRule.runOnIdle { dismissProgress = 0.25f }
+        composeTestRule.waitForIdle()
+        val earlyScrubToolbarBounds = composeTestRule
+            .onNodeWithTag("preview_floating_toolbar")
+            .getUnclippedBoundsInRoot()
+        assertTrue(
+            "Expected toolbar to start below resting position at 25% scrub",
+            earlyScrubToolbarBounds.top > restingToolbarBounds.top
+        )
+
+        composeTestRule.runOnIdle { dismissProgress = 0.60f }
+        composeTestRule.waitForIdle()
+        val deeperScrubToolbarBounds = composeTestRule
+            .onNodeWithTag("preview_floating_toolbar")
+            .getUnclippedBoundsInRoot()
+        assertTrue(
+            "Expected toolbar to rise smoothly as predictive back progress increases",
+            deeperScrubToolbarBounds.top < earlyScrubToolbarBounds.top
+        )
+        assertEquals(
+            "Expected mid-scrub coordinates not to overwrite shared Copy button bounds",
+            placementsWhileOpen,
+            reportedCopyButtonTops.size
+        )
+
+        // Cancel predictive back gesture: keyboard remains open and footer tucks away cleanly.
+        composeTestRule.runOnIdle { dismissProgress = null }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("preview_footer").assertDoesNotExist()
+
+        // Scrub again and commit dismissal.
+        composeTestRule.runOnIdle { dismissProgress = 0.40f }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("preview_floating_toolbar").assertExists()
+
+        composeTestRule.runOnIdle {
+            keyboardOpen = false
+            dismissProgress = null
+        }
+        composeTestRule.waitForIdle()
+
+        val restoredToolbarBounds = composeTestRule
+            .onNodeWithTag("preview_floating_toolbar")
+            .getUnclippedBoundsInRoot()
+        assertEquals(restingToolbarBounds.top.value, restoredToolbarBounds.top.value, 1f)
+        assertTrue(
+            "Expected Copy button bounds to refresh once committed dismiss settles",
+            reportedCopyButtonTops.size > placementsWhileOpen
+        )
+    }
+
+    @Test
+    @Config(qualifiers = "w840dp-h412dp-land")
+    fun horizontalLayoutScrubsSideActionsInDuringPredictiveBackDismiss() {
+        var keyboardOpen by mutableStateOf(false)
+        var dismissProgress by mutableStateOf<Float?>(null)
+
+        composeTestRule.setContent {
+            MyApplicationTheme {
+                MarkdownPreviewScreen(
+                    markdownText = "# Landscape Predictive Back",
+                    onMarkdownChange = {},
+                    onClear = {},
+                    onPasteAgain = {},
+                    onSaveFile = {},
+                    onCopy = {},
+                    onOpenSettings = {},
+                    isKeyboardOpen = keyboardOpen,
+                    imeDismissProgress = dismissProgress
+                )
+            }
+        }
+
+        composeTestRule.waitForIdle()
+        val restingCopyBounds = composeTestRule
+            .onNodeWithTag("copy_button")
+            .getUnclippedBoundsInRoot()
+
+        composeTestRule.runOnIdle { keyboardOpen = true }
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("copy_button").assertDoesNotExist()
+
+        composeTestRule.runOnIdle { dismissProgress = 0.30f }
+        composeTestRule.waitForIdle()
+        val earlyScrubCopyBounds = composeTestRule
+            .onNodeWithTag("copy_button")
+            .getUnclippedBoundsInRoot()
+        assertTrue(
+            "Expected side panel Copy button to scrub in from the right during predictive back",
+            earlyScrubCopyBounds.left > restingCopyBounds.left
+        )
+
+        composeTestRule.runOnIdle { dismissProgress = 0.75f }
+        composeTestRule.waitForIdle()
+        val lateScrubCopyBounds = composeTestRule
+            .onNodeWithTag("copy_button")
+            .getUnclippedBoundsInRoot()
+        assertTrue(
+            "Expected side panel Copy button to move left toward resting position as scrub progresses",
+            lateScrubCopyBounds.left < earlyScrubCopyBounds.left
+        )
+
+        composeTestRule.runOnIdle {
+            keyboardOpen = false
+            dismissProgress = null
+        }
+        composeTestRule.waitForIdle()
+        val restoredCopyBounds = composeTestRule
+            .onNodeWithTag("copy_button")
+            .getUnclippedBoundsInRoot()
+        assertEquals(restingCopyBounds.left.value, restoredCopyBounds.left.value, 1f)
+    }
 }
