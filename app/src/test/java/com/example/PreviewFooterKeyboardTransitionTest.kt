@@ -12,6 +12,7 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
+import com.example.ui.navigation.ProvidePrimaryActionAnchorForTest
 import com.example.ui.theme.MyApplicationTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -35,19 +36,22 @@ class PreviewFooterKeyboardTransitionTest {
 
         composeTestRule.setContent {
             MyApplicationTheme {
-                MarkdownPreviewScreen(
-                    markdownText = "# Preview Heading\n\nBody copy.",
-                    onMarkdownChange = {},
-                    onClear = {},
-                    onPasteAgain = {},
-                    onSaveFile = {},
-                    onCopy = {},
-                    onOpenSettings = {},
-                    onCopyButtonPlaced = { coords ->
+                ProvidePrimaryActionAnchorForTest(
+                    onBoundsPlaced = { coords ->
                         reportedCopyButtonTops += coords.positionInRoot().y
-                    },
-                    isKeyboardOpen = keyboardOpen
-                )
+                    }
+                ) {
+                    MarkdownPreviewScreen(
+                        markdownText = "# Preview Heading\n\nBody copy.",
+                        onMarkdownChange = {},
+                        onClear = {},
+                        onPasteAgain = {},
+                        onSaveFile = {},
+                        onCopy = {},
+                        onOpenSettings = {},
+                        isKeyboardOpen = keyboardOpen
+                    )
+                }
             }
         }
 
@@ -172,19 +176,22 @@ class PreviewFooterKeyboardTransitionTest {
 
         composeTestRule.setContent {
             MyApplicationTheme {
-                MarkdownPreviewScreen(
-                    markdownText = "# Horizontal Preview\n\nBody copy.",
-                    onMarkdownChange = {},
-                    onClear = {},
-                    onPasteAgain = {},
-                    onSaveFile = {},
-                    onCopy = {},
-                    onOpenSettings = {},
-                    onCopyButtonPlaced = { coords ->
+                ProvidePrimaryActionAnchorForTest(
+                    onBoundsPlaced = { coords ->
                         reportedCopyButtonLefts += coords.positionInRoot().x
-                    },
-                    isKeyboardOpen = keyboardOpen
-                )
+                    }
+                ) {
+                    MarkdownPreviewScreen(
+                        markdownText = "# Horizontal Preview\n\nBody copy.",
+                        onMarkdownChange = {},
+                        onClear = {},
+                        onPasteAgain = {},
+                        onSaveFile = {},
+                        onCopy = {},
+                        onOpenSettings = {},
+                        isKeyboardOpen = keyboardOpen
+                    )
+                }
             }
         }
 
@@ -341,20 +348,23 @@ class PreviewFooterKeyboardTransitionTest {
 
         composeTestRule.setContent {
             MyApplicationTheme {
-                MarkdownPreviewScreen(
-                    markdownText = "# Predictive Back Preview",
-                    onMarkdownChange = {},
-                    onClear = {},
-                    onPasteAgain = {},
-                    onSaveFile = {},
-                    onCopy = {},
-                    onOpenSettings = {},
-                    onCopyButtonPlaced = { coords ->
+                ProvidePrimaryActionAnchorForTest(
+                    onBoundsPlaced = { coords ->
                         reportedCopyButtonTops += coords.positionInRoot().y
-                    },
-                    isKeyboardOpen = keyboardOpen,
-                    imeDismissProgress = dismissProgress
-                )
+                    }
+                ) {
+                    MarkdownPreviewScreen(
+                        markdownText = "# Predictive Back Preview",
+                        onMarkdownChange = {},
+                        onClear = {},
+                        onPasteAgain = {},
+                        onSaveFile = {},
+                        onCopy = {},
+                        onOpenSettings = {},
+                        isKeyboardOpen = keyboardOpen,
+                        imeDismissProgress = dismissProgress
+                    )
+                }
             }
         }
 

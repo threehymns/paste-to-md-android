@@ -14,6 +14,7 @@ import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
+import com.example.ui.navigation.ProvidePrimaryActionAnchorForTest
 import com.example.ui.theme.LocalReducedMotion
 import com.example.ui.theme.MyApplicationTheme
 import org.junit.Assert.assertEquals
@@ -46,9 +47,9 @@ class PasteHeroBadgePressLinkTest {
                             pressFraction.also { observedDrawFractions.add(it) }
                         }
                     }
-                    PasteToMarkdownScreen(
-                        pressShapeFraction = readPressFraction
-                    )
+                    ProvidePrimaryActionAnchorForTest(pressFraction = readPressFraction) {
+                        PasteToMarkdownScreen()
+                    }
                 }
             }
         }
@@ -106,9 +107,9 @@ class PasteHeroBadgePressLinkTest {
                             pressFraction.also { observedDrawFractions.add(it) }
                         }
                     }
-                    PasteToMarkdownScreen(
-                        pressShapeFraction = readPressFraction
-                    )
+                    ProvidePrimaryActionAnchorForTest(pressFraction = readPressFraction) {
+                        PasteToMarkdownScreen()
+                    }
                 }
             }
         }
@@ -119,7 +120,7 @@ class PasteHeroBadgePressLinkTest {
             .getUnclippedBoundsInRoot()
         assertEquals(1, recompositionCount)
         assertTrue(
-            "Reduced motion should bypass pressShapeFraction reads on PasteHeroBadge",
+            "Reduced motion should bypass pressFraction reads on PasteHeroBadge",
             observedDrawFractions.isEmpty()
         )
 
@@ -155,9 +156,9 @@ class PasteHeroBadgePressLinkTest {
                                 pressFraction.also { observedDrawFractions.add(it) }
                             }
                         }
-                        PasteToMarkdownScreen(
-                            pressShapeFraction = readPressFraction
-                        )
+                        ProvidePrimaryActionAnchorForTest(pressFraction = readPressFraction) {
+                            PasteToMarkdownScreen()
+                        }
                     }
                 }
             }

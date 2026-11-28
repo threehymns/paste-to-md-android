@@ -10,9 +10,7 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -61,9 +59,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
@@ -77,10 +72,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.example.ui.AppIcons
-import com.example.ui.ExpressivePrimaryActionButton
 import com.example.ui.ExpressiveSnackbarHost
 import com.example.ui.PreviewKeyboardAnimatedContainer
 import com.example.ui.PreviewKeyboardRevealOrientation
+import com.example.ui.navigation.PrimaryActionButton
 import com.example.ui.rememberPreviewImeTransitionState
 import com.example.ui.theme.LocalReducedMotion
 import com.example.ui.theme.MonoFontFamily
@@ -117,10 +112,6 @@ fun MarkdownPreviewScreen(
     onCopy: () -> Unit,
     onOpenSettings: () -> Unit,
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
-    isCopyButtonHidden: () -> Boolean = { false },
-    onCopyButtonPlaced: ((LayoutCoordinates) -> Unit)? = null,
-    copyInteractionSource: MutableInteractionSource? = null,
-    pressShapeFraction: (() -> Float)? = null,
     isKeyboardOpen: Boolean? = null,
     imeDismissProgress: Float? = null,
     modifier: Modifier = Modifier
@@ -238,15 +229,6 @@ fun MarkdownPreviewScreen(
                         offscreenClearancePx = sidePanelOffscreenClearancePx,
                         scrubPeekOffsetPx = scrubPeekOffsetPx
                     ) { isActionsSettledVisible ->
-                        var latestCopyButtonCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
-
-                        LaunchedEffect(isActionsSettledVisible, latestCopyButtonCoords, onCopyButtonPlaced) {
-                            val coords = latestCopyButtonCoords
-                            if (isActionsSettledVisible && coords != null && coords.isAttached) {
-                                onCopyButtonPlaced?.invoke(coords)
-                            }
-                        }
-
                         Row(
                             modifier = Modifier
                                 .fillMaxHeight()
@@ -292,20 +274,8 @@ fun MarkdownPreviewScreen(
                                 PreviewCopyActionButton(
                                     enabled = markdownText.isNotEmpty(),
                                     isCopied = showCopyConfirmed,
-                                    onClick = handleCopyClick,
-                                    interactionSource = copyInteractionSource,
-                                    pressShapeFraction = pressShapeFraction,
-                                    isCopyButtonHidden = isCopyButtonHidden,
-                                    onPositioned = if (onCopyButtonPlaced != null) {
-                                        { coords ->
-                                            latestCopyButtonCoords = coords
-                                            if (isActionsSettledVisible) {
-                                                onCopyButtonPlaced(coords)
-                                            }
-                                        }
-                                    } else {
-                                        null
-                                    }
+                                    isSettled = isActionsSettledVisible,
+                                    onClick = handleCopyClick
                                 )
                             }
                         }
@@ -336,15 +306,6 @@ fun MarkdownPreviewScreen(
                         offscreenClearancePx = footerOffscreenClearancePx,
                         scrubPeekOffsetPx = scrubPeekOffsetPx
                     ) { isFooterSettledVisible ->
-                        var latestCopyButtonCoords by remember { mutableStateOf<LayoutCoordinates?>(null) }
-
-                        LaunchedEffect(isFooterSettledVisible, latestCopyButtonCoords, onCopyButtonPlaced) {
-                            val coords = latestCopyButtonCoords
-                            if (isFooterSettledVisible && coords != null && coords.isAttached) {
-                                onCopyButtonPlaced?.invoke(coords)
-                            }
-                        }
-
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -388,20 +349,8 @@ fun MarkdownPreviewScreen(
                             PreviewCopyActionButton(
                                 enabled = markdownText.isNotEmpty(),
                                 isCopied = showCopyConfirmed,
-                                onClick = handleCopyClick,
-                                interactionSource = copyInteractionSource,
-                                pressShapeFraction = pressShapeFraction,
-                                isCopyButtonHidden = isCopyButtonHidden,
-                                onPositioned = if (onCopyButtonPlaced != null) {
-                                    { coords ->
-                                        latestCopyButtonCoords = coords
-                                        if (isFooterSettledVisible) {
-                                            onCopyButtonPlaced(coords)
-                                        }
-                                    }
-                                } else {
-                                    null
-                                }
+                                isSettled = isFooterSettledVisible,
+                                onClick = handleCopyClick
                             )
                         }
                     }
@@ -563,29 +512,17 @@ private fun PreviewSettingsButton(onClick: () -> Unit) {
 private fun PreviewCopyActionButton(
     enabled: Boolean,
     onClick: () -> Unit,
-    interactionSource: MutableInteractionSource?,
-    pressShapeFraction: (() -> Float)?,
-    isCopyButtonHidden: () -> Boolean,
-    onPositioned: ((LayoutCoordinates) -> Unit)?,
+    isSettled: Boolean,
     isCopied: Boolean = false
 ) {
     val reducedMotion = LocalReducedMotion.current
-    ExpressivePrimaryActionButton(
+    PrimaryActionButton(
         onClick = onClick,
         enabled = enabled,
-        interactionSource = interactionSource,
-        pressShapeFraction = pressShapeFraction,
+        isSettled = isSettled,
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = ButtonDefaults.MediumContainerHeight)
-            .then(
-                if (onPositioned != null) {
-                    Modifier.onGloballyPositioned(onPositioned)
-                } else {
-                    Modifier
-                }
-            )
-            .graphicsLayer { alpha = if (isCopyButtonHidden()) 0f else 1f }
             .semantics {
                 if (isCopied) {
                     liveRegion = LiveRegionMode.Polite

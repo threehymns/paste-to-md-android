@@ -1,7 +1,5 @@
 package com.example
 
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -10,7 +8,6 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.platform.testTag
@@ -20,11 +17,14 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import com.example.ui.DynamicPressMorphShape
-import com.example.ui.ExpressivePrimaryActionButton
-import com.example.ui.PrimaryActionPressState
-import com.example.ui.computePressMorphCornerShape
-import com.example.ui.rememberPrimaryActionPressState
+import androidx.compose.foundation.interaction.PressInteraction
+import androidx.compose.ui.geometry.Offset
+import com.example.ui.navigation.DynamicPressMorphShape
+import com.example.ui.navigation.PrimaryActionButton
+import com.example.ui.navigation.PrimaryActionPressState
+import com.example.ui.navigation.ProvidePrimaryActionAnchorForTest
+import com.example.ui.navigation.computePressScale
+import com.example.ui.navigation.rememberPrimaryActionPressState
 import com.example.ui.theme.MyApplicationTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -66,11 +66,12 @@ class PrimaryActionPressPerformanceTest {
                         recompositionCount += 1
                     }
                 }
-                PrimaryButtonHost(
-                    interactionSource = pressState.pasteInteractionSource,
-                    pressShapeFraction = readPressFraction,
-                    onRecompose = countRecomposition
-                )
+                ProvidePrimaryActionAnchorForTest(
+                    interactionSource = pressState.startInteractionSource,
+                    pressFraction = readPressFraction
+                ) {
+                    PrimaryButtonHost(onRecompose = countRecomposition)
+                }
             }
         }
 
@@ -82,7 +83,7 @@ class PrimaryActionPressPerformanceTest {
 
         val press = PressInteraction.Press(Offset.Zero)
         composeTestRule.runOnIdle {
-            scope.launch { pressState.pasteInteractionSource.emit(press) }
+            scope.launch { pressState.startInteractionSource.emit(press) }
         }
 
         val pressSamples = mutableListOf<Float>()
@@ -102,7 +103,7 @@ class PrimaryActionPressPerformanceTest {
         )
 
         composeTestRule.runOnIdle {
-            scope.launch { pressState.pasteInteractionSource.emit(PressInteraction.Release(press)) }
+            scope.launch { pressState.startInteractionSource.emit(PressInteraction.Release(press)) }
         }
 
         val releaseSamples = mutableListOf<Float>()
@@ -127,8 +128,8 @@ class PrimaryActionPressPerformanceTest {
     }
 
     @Test
-    fun dynamicPressMorphShapeMatchesOverlayCornerShapeAcrossFractionsAndDirections() {
-        val density = Density(density = 2f, fontScale = 1f)
+    fun dynamicPressMorphShapeInterpolatesClampsAndMirrorsRtlCleanly() {
+        val density = Density(density = 1f, fontScale = 1f)
         val buttonSize = Size(width = 360f, height = 56f)
         val restingShape = CircleShape
         val pressedShape = RoundedCornerShape(
@@ -145,63 +146,50 @@ class PrimaryActionPressPerformanceTest {
             pressFraction = { currentFraction }
         )
 
-        val fractions = listOf(-0.08f, 0f, 0.35f, 0.5f, 0.7f, 1f, 1.08f)
-        for (layoutDirection in listOf(LayoutDirection.Ltr, LayoutDirection.Rtl)) {
-            for (fraction in fractions) {
-                currentFraction = fraction
-                val dynamicOutline = dynamicShape.createOutline(
-                    size = buttonSize,
-                    layoutDirection = layoutDirection,
-                    density = density
-                ) as Outline.Rounded
-                val overlayOutline = computePressMorphCornerShape(
-                    restingShape = restingShape,
-                    pressedShape = pressedShape,
-                    pressFraction = fraction,
-                    size = buttonSize,
-                    density = density
-                ).createOutline(
-                    size = buttonSize,
-                    layoutDirection = layoutDirection,
-                    density = density
-                ) as Outline.Rounded
+        // Resting full pill radius is 28px (height / 2); pressed topStart is 12px.
+        currentFraction = 0f
+        val restingLtr = dynamicShape.createOutline(buttonSize, LayoutDirection.Ltr, density) as Outline.Rounded
+        assertEquals(28f, restingLtr.roundRect.topLeftCornerRadius.x, 0.001f)
 
-                assertEquals(
-                    overlayOutline.roundRect.topLeftCornerRadius.x,
-                    dynamicOutline.roundRect.topLeftCornerRadius.x,
-                    0.001f
-                )
-                assertEquals(
-                    overlayOutline.roundRect.topRightCornerRadius.x,
-                    dynamicOutline.roundRect.topRightCornerRadius.x,
-                    0.001f
-                )
-                assertEquals(
-                    overlayOutline.roundRect.bottomRightCornerRadius.x,
-                    dynamicOutline.roundRect.bottomRightCornerRadius.x,
-                    0.001f
-                )
-                assertEquals(
-                    overlayOutline.roundRect.bottomLeftCornerRadius.x,
-                    dynamicOutline.roundRect.bottomLeftCornerRadius.x,
-                    0.001f
-                )
-            }
-        }
+        currentFraction = 0.5f
+        val midLtr = dynamicShape.createOutline(buttonSize, LayoutDirection.Ltr, density) as Outline.Rounded
+        assertEquals(20f, midLtr.roundRect.topLeftCornerRadius.x, 0.001f)
+        assertEquals(19f, midLtr.roundRect.topRightCornerRadius.x, 0.001f)
+
+        // RTL mirrors start/end corners symmetrically.
+        val midRtl = dynamicShape.createOutline(buttonSize, LayoutDirection.Rtl, density) as Outline.Rounded
+        assertEquals(midLtr.roundRect.topLeftCornerRadius.x, midRtl.roundRect.topRightCornerRadius.x, 0.001f)
+        assertEquals(midLtr.roundRect.topRightCornerRadius.x, midRtl.roundRect.topLeftCornerRadius.x, 0.001f)
+        assertEquals(midLtr.roundRect.bottomLeftCornerRadius.x, midRtl.roundRect.bottomRightCornerRadius.x, 0.001f)
+        assertEquals(midLtr.roundRect.bottomRightCornerRadius.x, midRtl.roundRect.bottomLeftCornerRadius.x, 0.001f)
+
+        // Negative overshoot clamps safely to maxRadius (28px).
+        currentFraction = -0.25f
+        val overshotLtr = dynamicShape.createOutline(buttonSize, LayoutDirection.Ltr, density) as Outline.Rounded
+        assertEquals(28f, overshotLtr.roundRect.topLeftCornerRadius.x, 0.001f)
+    }
+
+    @Test
+    fun computePressScaleCompressesCleanlyAndRespectsReducedMotion() {
+        assertEquals(1f, computePressScale(0f, reducedMotion = false), 0.0001f)
+        assertEquals(0.985f, computePressScale(0.5f, reducedMotion = false), 0.0001f)
+        assertEquals(0.97f, computePressScale(1f, reducedMotion = false), 0.0001f)
+        assertEquals(0.97f, computePressScale(1.1f, reducedMotion = false), 0.0001f)
+        val subtleRebound = computePressScale(-0.12f, reducedMotion = false)
+        assertTrue(subtleRebound > 1f && subtleRebound < 1.005f)
+        assertEquals(subtleRebound, computePressScale(-0.5f, reducedMotion = false), 0.0001f)
+        assertEquals(1f, computePressScale(1f, reducedMotion = true), 0.0001f)
+        assertEquals(1f, computePressScale(-0.1f, reducedMotion = true), 0.0001f)
     }
 }
 
 @Composable
 private fun PrimaryButtonHost(
-    interactionSource: MutableInteractionSource,
-    pressShapeFraction: () -> Float,
     onRecompose: () -> Unit
 ) {
-    ExpressivePrimaryActionButton(
+    PrimaryActionButton(
         onClick = {},
         enabled = true,
-        interactionSource = interactionSource,
-        pressShapeFraction = pressShapeFraction,
         modifier = Modifier.testTag("primary_press_button")
     ) {
         SideEffect { onRecompose() }

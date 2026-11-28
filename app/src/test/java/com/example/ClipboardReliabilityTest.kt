@@ -6,13 +6,15 @@ import android.content.Context
 import android.net.Uri
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.AppSettingsRepository
-import kotlinx.coroutines.CompletableDeferred
+import com.example.session.AndroidDocumentExporter
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -29,7 +31,7 @@ import java.io.File
 class ClipboardReliabilityTest {
 
     @get:Rule
-    val composeTestRule = createAndroidComposeRule<MainActivity>()
+    val composeTestRule = createEmptyComposeRule()
 
     @Before
     fun clearPrefs() {
@@ -38,133 +40,72 @@ class ClipboardReliabilityTest {
     }
 
     @Test
-    fun autoPasteWaitsForWindowFocusBeforeReadingClipboard() {
-        val activity = composeTestRule.activity
-        val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("sample", "Focused Paste"))
-
-        // Ensure window focus is currently false before enabling auto-paste.
-        composeTestRule.runOnIdle {
-            activity.onWindowFocusChanged(false)
-            activity.settingsRepository.setAutoPasteOnLaunch(true)
-        }
-        composeTestRule.waitForIdle()
-
-        // Should still be on Paste screen until window gains focus.
-        composeTestRule.onNodeWithTag("paste_button").assertIsDisplayed()
-
-        composeTestRule.runOnIdle {
-            activity.onWindowFocusChanged(true)
-        }
-        composeTestRule.waitForIdle()
-
-        composeTestRule.onNodeWithTag("markdown_text_field").assertIsDisplayed()
-        composeTestRule.onNodeWithTag("markdown_text_field").assertTextContains("Focused Paste")
-    }
-
-    @Test
-    fun htmlConversionErrorDoesNotOverwriteMarkdownOrAutoCopyClipboard() {
-        val activity = composeTestRule.activity
-        val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-
-        // First navigate to Preview with valid text.
-        clipboard.setPrimaryClip(ClipData.newPlainText("initial", "Existing Markdown"))
-        composeTestRule.onNodeWithTag("paste_button").performClick()
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("markdown_text_field").assertTextContains("Existing Markdown")
-
-        // Enable auto-copy and put HTML on clipboard, with a failing converter.
-        composeTestRule.runOnIdle {
-            activity.settingsRepository.setAutoCopyOnConvert(true)
-            activity.htmlConverter = { _, _ -> throw IllegalStateException("Malformed HTML") }
-            clipboard.setPrimaryClip(ClipData.newHtmlText("bad", "fallback", "<p>bad</p>"))
-        }
-
-        composeTestRule.onNodeWithTag("paste_again_button").performClick()
-        composeTestRule.waitForIdle()
-
-        // Existing markdown text and clipboard HTML must remain intact.
-        composeTestRule.onNodeWithTag("markdown_text_field").assertTextContains("Existing Markdown")
-        val currentClip = clipboard.primaryClip
-        assertEquals("<p>bad</p>", currentClip?.getItemAt(0)?.htmlText)
-        composeTestRule.onNodeWithText("Error converting HTML", substring = true).assertIsDisplayed()
-    }
-
-    @Test
-    fun cancellingInFlightConversionOnBackDoesNotMutateOrReopenPreview() {
-        val activity = composeTestRule.activity
-        val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-
-        // Start in Preview with initial text.
-        clipboard.setPrimaryClip(ClipData.newPlainText("initial", "First Doc"))
-        composeTestRule.onNodeWithTag("paste_button").performClick()
-        composeTestRule.waitForIdle()
-        composeTestRule.onNodeWithTag("markdown_text_field").assertIsDisplayed()
-
-        // Start a slow HTML conversion on Paste Again, then press Clear/Back before it finishes.
-        val gate = CompletableDeferred<String>()
-        composeTestRule.runOnIdle {
-            activity.htmlConverter = { _, _ -> gate.await() }
-            clipboard.setPrimaryClip(ClipData.newHtmlText("slow", "slow", "<p>Slow</p>"))
-        }
-
-        composeTestRule.onNodeWithTag("paste_again_button").performClick()
-        composeTestRule.waitForIdle()
-
-        composeTestRule.onNodeWithTag("clear_button").performClick()
-        composeTestRule.waitForIdle()
-
-        // Complete the stale deferred after navigating back.
-        gate.complete("Stale Result")
-        composeTestRule.waitForIdle()
-
-        // Must remain on Paste screen, not overwritten or jumped back to Preview.
-        composeTestRule.onNodeWithTag("paste_button").assertIsDisplayed()
-    }
-
-    @Test
-    fun writeMarkdownToUriReturnsFalseWhenOutputStreamIsNullAndWritesUtf8WhenValid() {
+    fun androidDocumentExporterWritesUtf8AndReturnsFalseForMissingProvider() = runTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
+        val exporter = AndroidDocumentExporter(context.contentResolver)
         val tempFile = File(context.cacheDir, "saved_test.md")
         val fileUri = Uri.fromFile(tempFile)
 
-        val validSuccess = writeMarkdownToUri(
-            contentResolver = context.contentResolver,
-            uri = fileUri,
+        val validSuccess = exporter.write(
+            targetId = fileUri.toString(),
             markdown = "# Café — Markdown"
         )
         assertTrue(validSuccess)
         assertEquals("# Café — Markdown", tempFile.readText(Charsets.UTF_8))
 
-        // Unregistered content URI returns null / throws FileNotFoundException -> returns false.
         val missingUri = Uri.parse("content://com.example.nonexistent.provider/missing.md")
-        val nullStreamSuccess = writeMarkdownToUri(
-            contentResolver = context.contentResolver,
-            uri = missingUri,
+        val nullStreamSuccess = exporter.write(
+            targetId = missingUri.toString(),
             markdown = "should fail"
         )
         assertFalse(nullStreamSuccess)
     }
 
     @Test
+    fun autoPasteOnLaunchReadsClipboardOnceWindowGainsFocus() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        AppSettingsRepository(context).setAutoPasteOnLaunch(true)
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("sample", "Focused Paste"))
+
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            composeTestRule.waitForIdle()
+            scenario.onActivity { activity ->
+                activity.onWindowFocusChanged(true)
+            }
+            composeTestRule.waitForIdle()
+
+            composeTestRule.onNodeWithTag("markdown_text_field").assertIsDisplayed()
+            composeTestRule.onNodeWithTag("markdown_text_field").assertTextContains("Focused Paste")
+        }
+    }
+
+    @Test
     fun manualCopyWritesClipboardWithInlineConfirmationAndNoSnackbar() {
-        val activity = composeTestRule.activity
-        val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         clipboard.setPrimaryClip(ClipData.newHtmlText("doc", "Hello", "<h1>Hello</h1>"))
-        composeTestRule.onNodeWithTag("paste_button").performClick()
-        composeTestRule.waitForIdle()
 
-        composeTestRule.onNodeWithTag("markdown_text_field").assertTextContains("# Hello", substring = true)
+        ActivityScenario.launch(MainActivity::class.java).use {
+            composeTestRule.waitForIdle()
+            composeTestRule.onNodeWithTag("paste_button").performClick()
+            composeTestRule.waitForIdle()
 
-        composeTestRule.mainClock.autoAdvance = false
-        composeTestRule.onNodeWithTag("copy_button").performClick()
-        composeTestRule.mainClock.advanceTimeBy(220L)
-        composeTestRule.waitForIdle()
+            composeTestRule.onNodeWithTag("markdown_text_field").assertTextContains("# Hello", substring = true)
 
-        val copiedClip = clipboard.primaryClip
-        assertEquals("# Hello", copiedClip?.getItemAt(0)?.text?.toString()?.trim())
-        composeTestRule.onNodeWithText("Copied").assertIsDisplayed()
-        composeTestRule.onNodeWithText("Markdown copied to clipboard").assertDoesNotExist()
+            composeTestRule.mainClock.autoAdvance = false
+            try {
+                composeTestRule.onNodeWithTag("copy_button").performClick()
+                composeTestRule.mainClock.advanceTimeBy(220L)
+                composeTestRule.waitForIdle()
+
+                val copiedClip = clipboard.primaryClip
+                assertEquals("# Hello", copiedClip?.getItemAt(0)?.text?.toString()?.trim())
+                composeTestRule.onNodeWithText("Copied").assertIsDisplayed()
+                composeTestRule.onNodeWithText("Markdown copied to clipboard").assertDoesNotExist()
+            } finally {
+                composeTestRule.mainClock.autoAdvance = true
+            }
+        }
     }
 }

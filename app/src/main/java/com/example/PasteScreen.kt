@@ -9,7 +9,6 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -48,9 +47,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.LineBreak
@@ -58,9 +54,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.ui.AppIcons
-import com.example.ui.ExpressivePrimaryActionButton
 import com.example.ui.ExpressiveSnackbarHost
-import com.example.ui.computePressScale
+import com.example.ui.navigation.PrimaryActionButton
+import com.example.ui.navigation.linkToPrimaryActionPress
 import com.example.ui.theme.LocalReducedMotion
 import com.example.ui.theme.MotionTokens
 
@@ -81,10 +77,6 @@ fun PasteToMarkdownScreen(
     onPaste: () -> Unit = {},
     onOpenSettings: () -> Unit = {},
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
-    isPasteButtonHidden: () -> Boolean = { false },
-    onPasteButtonPlaced: ((LayoutCoordinates) -> Unit)? = null,
-    pasteInteractionSource: MutableInteractionSource? = null,
-    pressShapeFraction: (() -> Float)? = null,
     modifier: Modifier = Modifier
 ) {
     Scaffold(
@@ -121,17 +113,12 @@ fun PasteToMarkdownScreen(
                 ) {
                     PasteHeroBadge(
                         isConverting = isConverting,
-                        badgeSize = heroSize,
-                        pressShapeFraction = pressShapeFraction
+                        badgeSize = heroSize
                     )
 
                     PasteActionSection(
                         isConverting = isConverting,
                         onPaste = onPaste,
-                        isPasteButtonHidden = isPasteButtonHidden,
-                        onPasteButtonPlaced = onPasteButtonPlaced,
-                        pasteInteractionSource = pasteInteractionSource,
-                        pressShapeFraction = pressShapeFraction,
                         horizontalAlignment = Alignment.Start,
                         textAlign = TextAlign.Start,
                         verticalSpacing = 10.dp,
@@ -154,8 +141,7 @@ fun PasteToMarkdownScreen(
                 ) {
                     PasteHeroBadge(
                         isConverting = isConverting,
-                        badgeSize = PasteHeroCompactSize,
-                        pressShapeFraction = pressShapeFraction
+                        badgeSize = PasteHeroCompactSize
                     )
 
                     Spacer(modifier = Modifier.height(4.dp))
@@ -163,10 +149,6 @@ fun PasteToMarkdownScreen(
                     PasteActionSection(
                         isConverting = isConverting,
                         onPaste = onPaste,
-                        isPasteButtonHidden = isPasteButtonHidden,
-                        onPasteButtonPlaced = onPasteButtonPlaced,
-                        pasteInteractionSource = pasteInteractionSource,
-                        pressShapeFraction = pressShapeFraction,
                         horizontalAlignment = Alignment.CenterHorizontally,
                         textAlign = TextAlign.Center,
                         verticalSpacing = 16.dp,
@@ -204,7 +186,6 @@ fun PasteToMarkdownScreen(
 private fun PasteHeroBadge(
     isConverting: Boolean,
     badgeSize: Dp,
-    pressShapeFraction: (() -> Float)? = null,
     modifier: Modifier = Modifier
 ) {
     val reducedMotion = LocalReducedMotion.current
@@ -215,15 +196,7 @@ private fun PasteHeroBadge(
         contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
         modifier = modifier
             .size(badgeSize)
-            .graphicsLayer {
-                if (!reducedMotion && pressShapeFraction != null) {
-                    val fraction = pressShapeFraction().coerceIn(-0.12f, 1.0f)
-                    val scale = computePressScale(fraction, reducedMotion = false)
-                    scaleX = scale
-                    scaleY = scale
-                    rotationZ = -3f * fraction
-                }
-            }
+            .linkToPrimaryActionPress(tiltDegrees = -3f)
             .testTag("paste_hero_icon")
     ) {
         Box(contentAlignment = Alignment.Center) {
@@ -270,10 +243,6 @@ private fun PasteHeroBadge(
 private fun PasteActionSection(
     isConverting: Boolean,
     onPaste: () -> Unit,
-    isPasteButtonHidden: () -> Boolean,
-    onPasteButtonPlaced: ((LayoutCoordinates) -> Unit)?,
-    pasteInteractionSource: MutableInteractionSource?,
-    pressShapeFraction: (() -> Float)?,
     horizontalAlignment: Alignment.Horizontal,
     textAlign: TextAlign,
     verticalSpacing: Dp,
@@ -308,24 +277,14 @@ private fun PasteActionSection(
             modifier = Modifier.widthIn(max = 360.dp)
         )
 
-        ExpressivePrimaryActionButton(
+        PrimaryActionButton(
             onClick = onPaste,
             enabled = !isConverting,
-            interactionSource = pasteInteractionSource,
-            pressShapeFraction = pressShapeFraction,
             modifier = Modifier
                 .padding(top = buttonExtraTopPadding)
                 .widthIn(max = 360.dp)
                 .fillMaxWidth()
                 .heightIn(min = ButtonDefaults.MediumContainerHeight)
-                .then(
-                    if (onPasteButtonPlaced != null) {
-                        Modifier.onGloballyPositioned(onPasteButtonPlaced)
-                    } else {
-                        Modifier
-                    }
-                )
-                .graphicsLayer { alpha = if (isPasteButtonHidden()) 0f else 1f }
                 .testTag("paste_button")
         ) {
             Icon(
