@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
+import com.example.ui.theme.LocalReducedMotion
 import com.example.ui.theme.MotionTokens
 import kotlin.math.PI
 import kotlin.math.roundToInt
@@ -81,7 +82,6 @@ class PrimaryActionPressState internal constructor(
         get() = pressFractionAnimatable.value
 }
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun rememberPrimaryActionPressState(): PrimaryActionPressState {
     val pasteInteractionSource = remember { MutableInteractionSource() }
@@ -98,12 +98,16 @@ fun rememberPrimaryActionPressState(): PrimaryActionPressState {
     val isPastePressed by pasteInteractionSource.collectIsPressedAsState()
     val isCopyPressed by copyInteractionSource.collectIsPressedAsState()
     val isPressed = isPastePressed || isCopyPressed
-    val motionScheme = MaterialTheme.motionScheme
+    val reducedMotion = LocalReducedMotion.current
 
-    LaunchedEffect(isPressed) {
+    LaunchedEffect(isPressed, reducedMotion) {
         pressFractionAnimatable.animateTo(
             targetValue = if (isPressed) 1f else 0f,
-            animationSpec = motionScheme.fastSpatialSpec()
+            animationSpec = if (isPressed || reducedMotion) {
+                MotionTokens.pressInSpec()
+            } else {
+                MotionTokens.pressReleaseSpring()
+            }
         )
     }
 
@@ -157,6 +161,16 @@ internal fun computePressMorphCornerShape(
         bottomEnd = corner(restingShape.bottomEnd, pressedShape.bottomEnd),
         bottomStart = corner(restingShape.bottomStart, pressedShape.bottomStart)
     )
+}
+
+internal fun computePressScale(
+    pressFraction: Float,
+    reducedMotion: Boolean
+): Float {
+    if (reducedMotion) return 1f
+    // Allow tiny release rebound (-0.12f -> ~1.004f) while preventing overshoot compression below 0.97f.
+    val clamped = pressFraction.coerceIn(-0.12f, 1.0f)
+    return lerpUnclamped(1f, MotionTokens.PressScale, clamped)
 }
 
 /**
@@ -221,6 +235,7 @@ fun ExpressivePrimaryActionButton(
     content: @Composable RowScope.() -> Unit
 ) {
     val defaultShapes = ButtonDefaults.shapes()
+    val reducedMotion = LocalReducedMotion.current
     if (interactionSource != null && pressShapeFraction != null) {
         val restingShape = (defaultShapes.shape as? CornerBasedShape) ?: CircleShape
         val pressedShape = (defaultShapes.pressedShape as? CornerBasedShape) ?: MaterialTheme.shapes.medium
@@ -237,7 +252,11 @@ fun ExpressivePrimaryActionButton(
             shape = dynamicShape,
             contentPadding = ButtonDefaults.MediumContentPadding,
             interactionSource = interactionSource,
-            modifier = modifier,
+            modifier = modifier.graphicsLayer {
+                val scale = computePressScale(pressShapeFraction(), reducedMotion)
+                scaleX = scale
+                scaleY = scale
+            },
             content = content
         )
     } else {
@@ -335,6 +354,7 @@ internal fun ExpressiveButtonMorphOverlay(
 ) {
     val buttonColors = ButtonDefaults.buttonColors()
     val defaultShapes = ButtonDefaults.shapes()
+    val reducedMotion = LocalReducedMotion.current
     val restingShape = (defaultShapes.shape as? CornerBasedShape) ?: CircleShape
     val pressedShape = (defaultShapes.pressedShape as? CornerBasedShape) ?: MaterialTheme.shapes.medium
     val pasteContainerColor = buttonColors.containerColor
@@ -370,10 +390,14 @@ internal fun ExpressiveButtonMorphOverlay(
                 .testTag("primary_action_morph_overlay")
                 .graphicsLayer {
                     val visuals = computeMorphContentVisuals(effectsProgress().coerceIn(0f, 1f))
+                    val pressFraction = pressShapeFraction()
+                    val pressScale = computePressScale(pressFraction, reducedMotion)
+                    scaleX = pressScale
+                    scaleY = pressScale
                     shape = computePressMorphCornerShape(
                         restingShape = restingShape,
                         pressedShape = pressedShape,
-                        pressFraction = pressShapeFraction(),
+                        pressFraction = pressFraction,
                         size = size,
                         density = this
                     )

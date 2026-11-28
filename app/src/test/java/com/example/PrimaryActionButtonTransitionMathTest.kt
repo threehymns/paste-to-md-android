@@ -8,6 +8,7 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.example.ui.computeMorphContentVisuals
 import com.example.ui.computePressMorphCornerShape
+import com.example.ui.computePressScale
 import com.example.ui.interpolateMorphButtonRect
 import com.example.ui.interpolatedCornerShape
 import org.junit.Assert.assertEquals
@@ -129,5 +130,21 @@ class PrimaryActionButtonTransitionMathTest {
         val shapeA = interpolatedCornerShape(restingShape, pressedShape, 0.4f)
         val shapeB = interpolatedCornerShape(restingShape, pressedShape, 0.45f)
         assertNotEquals(shapeA, shapeB)
+    }
+
+    @Test
+    fun computePressScaleCompressesCleanlyAndRespectsReducedMotion() {
+        assertEquals(1f, computePressScale(0f, reducedMotion = false), 0.0001f)
+        assertEquals(0.985f, computePressScale(0.5f, reducedMotion = false), 0.0001f)
+        assertEquals(0.97f, computePressScale(1f, reducedMotion = false), 0.0001f)
+        // Never over-compresses past 0.97f.
+        assertEquals(0.97f, computePressScale(1.1f, reducedMotion = false), 0.0001f)
+        // Subtle bounded release rebound when spring dips slightly below 0f.
+        val subtleRebound = computePressScale(-0.12f, reducedMotion = false)
+        assertTrue(subtleRebound > 1f && subtleRebound < 1.005f)
+        assertEquals(subtleRebound, computePressScale(-0.5f, reducedMotion = false), 0.0001f)
+        // Reduced motion disables scale compression completely.
+        assertEquals(1f, computePressScale(1f, reducedMotion = true), 0.0001f)
+        assertEquals(1f, computePressScale(-0.1f, reducedMotion = true), 0.0001f)
     }
 }
