@@ -1,14 +1,23 @@
 package com.example.ui
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CornerBasedShape
+import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -18,10 +27,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp as lerpColor
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -29,6 +43,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
@@ -44,6 +59,144 @@ internal data class MeasuredButtonBounds(
     val rect: Rect,
     val containerSize: IntSize
 )
+
+/**
+ * Hoisted press-shape spring shared by the Paste button, Copy button, and morph overlay.
+ * Keeping the spring above individual screens ensures releasing the button to trigger
+ * navigation never cancels or snaps its Material 3 Expressive corner-radius animation.
+ */
+@Stable
+class PrimaryActionPressState internal constructor(
+    val pasteInteractionSource: MutableInteractionSource,
+    val copyInteractionSource: MutableInteractionSource,
+    private val pressFractionAnimatable: Animatable<Float, AnimationVector1D>
+) {
+    val pressFraction: Float
+        get() = pressFractionAnimatable.value
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun rememberPrimaryActionPressState(): PrimaryActionPressState {
+    val pasteInteractionSource = remember { MutableInteractionSource() }
+    val copyInteractionSource = remember { MutableInteractionSource() }
+    val pressFractionAnimatable = remember { Animatable(0f) }
+    val state = remember(pasteInteractionSource, copyInteractionSource, pressFractionAnimatable) {
+        PrimaryActionPressState(
+            pasteInteractionSource = pasteInteractionSource,
+            copyInteractionSource = copyInteractionSource,
+            pressFractionAnimatable = pressFractionAnimatable
+        )
+    }
+
+    val isPastePressed by pasteInteractionSource.collectIsPressedAsState()
+    val isCopyPressed by copyInteractionSource.collectIsPressedAsState()
+    val isPressed = isPastePressed || isCopyPressed
+    val motionScheme = MaterialTheme.motionScheme
+
+    LaunchedEffect(isPressed) {
+        pressFractionAnimatable.animateTo(
+            targetValue = if (isPressed) 1f else 0f,
+            animationSpec = motionScheme.fastSpatialSpec()
+        )
+    }
+
+    return state
+}
+
+private data class InterpolatedCornerSize(
+    private val start: CornerSize,
+    private val end: CornerSize,
+    private val fraction: Float
+) : CornerSize {
+    override fun toPx(shapeSize: Size, density: Density): Float {
+        val maxRadius = (minOf(shapeSize.width, shapeSize.height) / 2f).coerceAtLeast(0f)
+        return lerpUnclamped(
+            start = start.toPx(shapeSize, density),
+            stop = end.toPx(shapeSize, density),
+            fraction = fraction
+        ).coerceIn(0f, maxRadius)
+    }
+}
+
+internal fun interpolatedCornerShape(
+    restingShape: CornerBasedShape,
+    pressedShape: CornerBasedShape,
+    pressFraction: Float
+): RoundedCornerShape = RoundedCornerShape(
+    topStart = InterpolatedCornerSize(restingShape.topStart, pressedShape.topStart, pressFraction),
+    topEnd = InterpolatedCornerSize(restingShape.topEnd, pressedShape.topEnd, pressFraction),
+    bottomEnd = InterpolatedCornerSize(restingShape.bottomEnd, pressedShape.bottomEnd, pressFraction),
+    bottomStart = InterpolatedCornerSize(restingShape.bottomStart, pressedShape.bottomStart, pressFraction)
+)
+
+internal fun computePressMorphCornerShape(
+    restingShape: CornerBasedShape,
+    pressedShape: CornerBasedShape,
+    pressFraction: Float,
+    size: Size,
+    density: Density
+): RoundedCornerShape {
+    val maxRadius = (minOf(size.width, size.height) / 2f).coerceAtLeast(0f)
+    fun corner(start: CornerSize, end: CornerSize): Float =
+        lerpUnclamped(
+            start = start.toPx(size, density),
+            stop = end.toPx(size, density),
+            fraction = pressFraction
+        ).coerceIn(0f, maxRadius)
+
+    return RoundedCornerShape(
+        topStart = corner(restingShape.topStart, pressedShape.topStart),
+        topEnd = corner(restingShape.topEnd, pressedShape.topEnd),
+        bottomEnd = corner(restingShape.bottomEnd, pressedShape.bottomEnd),
+        bottomStart = corner(restingShape.bottomStart, pressedShape.bottomStart)
+    )
+}
+
+/**
+ * Primary Material 3 Expressive action button that shares its corner-radius press spring
+ * with the layout transition overlay when hosted in [MainActivity], preventing corner-radius
+ * animations from cancelling or snapping when navigation starts on release.
+ */
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@Composable
+fun ExpressivePrimaryActionButton(
+    onClick: () -> Unit,
+    enabled: Boolean,
+    interactionSource: MutableInteractionSource? = null,
+    pressShapeFraction: (() -> Float)? = null,
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit
+) {
+    val defaultShapes = ButtonDefaults.shapes()
+    if (interactionSource != null && pressShapeFraction != null) {
+        val restingShape = (defaultShapes.shape as? CornerBasedShape) ?: CircleShape
+        val pressedShape = (defaultShapes.pressedShape as? CornerBasedShape) ?: MaterialTheme.shapes.medium
+        val animatedShape = interpolatedCornerShape(
+            restingShape = restingShape,
+            pressedShape = pressedShape,
+            pressFraction = pressShapeFraction()
+        )
+        Button(
+            onClick = onClick,
+            enabled = enabled,
+            shape = animatedShape,
+            contentPadding = ButtonDefaults.MediumContentPadding,
+            interactionSource = interactionSource,
+            modifier = modifier,
+            content = content
+        )
+    } else {
+        Button(
+            onClick = onClick,
+            enabled = enabled,
+            shapes = defaultShapes,
+            contentPadding = ButtonDefaults.MediumContentPadding,
+            modifier = modifier,
+            content = content
+        )
+    }
+}
 
 internal fun computeRelativeButtonRect(
     screenContainer: LayoutCoordinates?,
@@ -87,7 +240,6 @@ private const val PasteExitEnd = 0.42f
 private const val CopyEnterStart = 0.34f
 private const val CopyEnterSpan = 0.46f
 private const val ContentMinScale = 0.92f
-private val ExpressiveMidFlightCornerRadius = 18.dp
 private val ExpressiveMidFlightElevation = 6.dp
 private val ContentVerticalTravel = 8.dp
 
@@ -113,7 +265,8 @@ internal fun computeMorphContentVisuals(progress: Float): MorphContentVisuals {
 /**
  * Material 3 Expressive layout transition overlay that morphs the Paste primary button
  * into the Copy primary button (and back) across screens using expressive spatial spring
- * bounds, subtle mid-flight shape/elevation morphing, and directional content fade-through.
+ * bounds, uninterrupted press/release corner-radius physics, subtle mid-flight elevation,
+ * and directional content fade-through.
  *
  * All per-frame progress reads occur inside layout and draw phases so the transition runs
  * without per-frame recomposition.
@@ -125,12 +278,16 @@ internal fun ExpressiveButtonMorphOverlay(
     copyBounds: Rect,
     spatialProgress: () -> Float,
     effectsProgress: () -> Float,
+    pressShapeFraction: () -> Float,
     pasteLabel: String,
     copyLabel: String,
     copyEnabled: Boolean,
     modifier: Modifier = Modifier
 ) {
     val buttonColors = ButtonDefaults.buttonColors()
+    val defaultShapes = ButtonDefaults.shapes()
+    val restingShape = (defaultShapes.shape as? CornerBasedShape) ?: CircleShape
+    val pressedShape = (defaultShapes.pressedShape as? CornerBasedShape) ?: MaterialTheme.shapes.medium
     val pasteContainerColor = buttonColors.containerColor
     val pasteContentColor = buttonColors.contentColor
     val copyContainerColor = if (copyEnabled) {
@@ -164,15 +321,13 @@ internal fun ExpressiveButtonMorphOverlay(
                 }
                 .graphicsLayer {
                     val visuals = computeMorphContentVisuals(spatialProgress())
-                    val restingPillRadiusPx = size.height / 2f
-                    val expressiveSquircleRadiusPx = ExpressiveMidFlightCornerRadius.toPx()
-                        .coerceAtMost(restingPillRadiusPx)
-                    val cornerRadiusPx = lerpUnclamped(
-                        start = restingPillRadiusPx,
-                        stop = expressiveSquircleRadiusPx,
-                        fraction = visuals.midFlightArc * 0.7f
+                    shape = computePressMorphCornerShape(
+                        restingShape = restingShape,
+                        pressedShape = pressedShape,
+                        pressFraction = pressShapeFraction(),
+                        size = size,
+                        density = this
                     )
-                    shape = RoundedCornerShape(cornerRadiusPx)
                     clip = true
                     shadowElevation = ExpressiveMidFlightElevation.toPx() * visuals.midFlightArc
                 }

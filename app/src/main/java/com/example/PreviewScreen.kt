@@ -5,6 +5,7 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -18,7 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
@@ -48,6 +48,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.example.ui.AppIcons
+import com.example.ui.ExpressivePrimaryActionButton
 import com.example.ui.ExpressiveSnackbarHost
 import com.example.ui.theme.MonoFontFamily
 
@@ -67,6 +68,8 @@ fun MarkdownPreviewScreen(
     snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
     isCopyButtonHidden: () -> Boolean = { false },
     onCopyButtonPlaced: ((LayoutCoordinates) -> Unit)? = null,
+    copyInteractionSource: MutableInteractionSource? = null,
+    pressShapeFraction: (() -> Float)? = null,
     modifier: Modifier = Modifier
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -222,11 +225,11 @@ fun MarkdownPreviewScreen(
 
                 Spacer(modifier = Modifier.height(12.dp))
 
-                Button(
+                ExpressivePrimaryActionButton(
                     onClick = onCopy,
                     enabled = markdownText.isNotEmpty(),
-                    shapes = ButtonDefaults.shapes(),
-                    contentPadding = ButtonDefaults.MediumContentPadding,
+                    interactionSource = copyInteractionSource,
+                    pressShapeFraction = pressShapeFraction,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = ButtonDefaults.MediumContainerHeight)

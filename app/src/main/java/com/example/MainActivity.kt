@@ -54,6 +54,7 @@ import com.example.data.AppSettingsRepository
 import com.example.ui.ExpressiveButtonMorphOverlay
 import com.example.ui.MeasuredButtonBounds
 import com.example.ui.computeRelativeButtonRect
+import com.example.ui.rememberPrimaryActionPressState
 import com.example.ui.settings.SettingsScreen
 import com.example.ui.theme.BrandFontFamily
 import com.example.ui.theme.MonoFontFamily
@@ -254,6 +255,10 @@ class MainActivity : ComponentActivity() {
                 var rootContainerSize by remember { mutableStateOf(IntSize.Zero) }
                 var pasteMeasuredBounds by remember { mutableStateOf<MeasuredButtonBounds?>(null) }
                 var copyMeasuredBounds by remember { mutableStateOf<MeasuredButtonBounds?>(null) }
+                val primaryActionPressState = rememberPrimaryActionPressState()
+                val readPressShapeFraction = remember(primaryActionPressState) {
+                    { primaryActionPressState.pressFraction }
+                }
 
                 fun cancelForwardTransition() {
                     if (!isForwardTransitionActive) return
@@ -747,7 +752,9 @@ class MainActivity : ComponentActivity() {
                                                         onOpenSettings = onOpenSettings,
                                                         snackbarHostState = snackbarHostState,
                                                         isPasteButtonHidden = isPrimaryActionButtonHidden,
-                                                        onPasteButtonPlaced = onButtonPlaced
+                                                        onPasteButtonPlaced = onButtonPlaced,
+                                                        pasteInteractionSource = primaryActionPressState.pasteInteractionSource,
+                                                        pressShapeFraction = readPressShapeFraction
                                                     )
                                                 }
 
@@ -763,7 +770,9 @@ class MainActivity : ComponentActivity() {
                                                         onOpenSettings = onOpenSettings,
                                                         snackbarHostState = snackbarHostState,
                                                         isCopyButtonHidden = isPrimaryActionButtonHidden,
-                                                        onCopyButtonPlaced = onButtonPlaced
+                                                        onCopyButtonPlaced = onButtonPlaced,
+                                                        copyInteractionSource = primaryActionPressState.copyInteractionSource,
+                                                        pressShapeFraction = readPressShapeFraction
                                                     )
                                                 }
 
@@ -829,6 +838,7 @@ class MainActivity : ComponentActivity() {
                                         else -> 0f
                                     }
                                 },
+                                pressShapeFraction = readPressShapeFraction,
                                 pasteLabel = stringResource(R.string.action_paste),
                                 copyLabel = stringResource(R.string.action_copy_markdown),
                                 copyEnabled = markdownText.isNotEmpty()

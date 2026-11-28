@@ -1,9 +1,17 @@
 package com.example
 
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
 import com.example.ui.computeMorphContentVisuals
+import com.example.ui.computePressMorphCornerShape
 import com.example.ui.interpolateMorphButtonRect
+import com.example.ui.interpolatedCornerShape
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -64,5 +72,52 @@ class PrimaryActionButtonTransitionMathTest {
         assertEquals(1f, overshotStart.pasteAlpha, 0.001f)
         assertEquals(0f, overshotStart.copyAlpha, 0.001f)
         assertEquals(0f, overshotStart.midFlightArc, 0.001f)
+    }
+
+    @Test
+    fun pressCornerShapesMatchBetweenButtonAndOverlayAndInvalidatePerFrame() {
+        val density = Density(density = 1f, fontScale = 1f)
+        val buttonSize = Size(width = 360f, height = 56f)
+        val restingShape = CircleShape
+        val pressedShape = RoundedCornerShape(12.dp)
+
+        val fractions = listOf(-0.08f, 0f, 0.35f, 0.7f, 1f, 1.08f)
+        for (fraction in fractions) {
+            val buttonShape = interpolatedCornerShape(restingShape, pressedShape, fraction)
+            val overlayShape = computePressMorphCornerShape(
+                restingShape = restingShape,
+                pressedShape = pressedShape,
+                pressFraction = fraction,
+                size = buttonSize,
+                density = density
+            )
+            assertEquals(
+                buttonShape.topStart.toPx(buttonSize, density),
+                overlayShape.topStart.toPx(buttonSize, density),
+                0.001f
+            )
+        }
+
+        // Resting is full pill (28px); pressed is 12px; mid-spring is 20px.
+        assertEquals(
+            28f,
+            interpolatedCornerShape(restingShape, pressedShape, 0f).topStart.toPx(buttonSize, density),
+            0.001f
+        )
+        assertEquals(
+            20f,
+            interpolatedCornerShape(restingShape, pressedShape, 0.5f).topStart.toPx(buttonSize, density),
+            0.001f
+        )
+        assertEquals(
+            12f,
+            interpolatedCornerShape(restingShape, pressedShape, 1f).topStart.toPx(buttonSize, density),
+            0.001f
+        )
+
+        // Distinct fractions must produce unequal Shape instances so Compose never reuses stale outlines.
+        val shapeA = interpolatedCornerShape(restingShape, pressedShape, 0.4f)
+        val shapeB = interpolatedCornerShape(restingShape, pressedShape, 0.45f)
+        assertNotEquals(shapeA, shapeB)
     }
 }
