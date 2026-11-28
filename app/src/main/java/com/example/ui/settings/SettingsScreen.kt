@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.AlertDialog
@@ -24,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MediumFlexibleTopAppBar
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedListItem
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,6 +53,7 @@ import com.example.data.EmphasisMarker
 import com.example.data.HeadingStyle
 import com.example.data.ThemeMode
 import com.example.ui.AppIcons
+import com.example.ui.ExpressiveSnackbarHost
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
@@ -58,6 +61,8 @@ fun SettingsScreen(
     settings: AppSettings,
     repository: AppSettingsRepository,
     onNavigateBack: () -> Unit,
+    snackbarHostState: SnackbarHostState = remember { SnackbarHostState() },
+    onResetCompleted: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showResetConfirmDialog by remember { mutableStateOf(false) }
@@ -73,6 +78,7 @@ fun SettingsScreen(
             .fillMaxSize()
             .nestedScroll(scrollBehavior.nestedScrollConnection),
         containerColor = MaterialTheme.colorScheme.surface,
+        snackbarHost = { ExpressiveSnackbarHost(hostState = snackbarHostState) },
         topBar = {
             MediumFlexibleTopAppBar(
                 title = { Text(text = stringResource(R.string.settings_title)) },
@@ -103,6 +109,10 @@ fun SettingsScreen(
             )
         }
     ) { innerPadding ->
+        val appearanceCount = if (supportsDynamicColor) 2 else 1
+
+        // Emit each section header and tile as its own LazyColumn item so offscreen tiles
+        // are composed lazily instead of all at once when opening Settings.
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -112,244 +122,258 @@ fun SettingsScreen(
                 end = innerPadding.calculateEndPadding(layoutDirection) + 16.dp,
                 bottom = innerPadding.calculateBottomPadding() + 24.dp
             ),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
+            verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap)
         ) {
             // 1. Appearance
-            item(key = "section_appearance") {
-                val itemCount = if (supportsDynamicColor) 2 else 1
-                SettingsSection(title = stringResource(R.string.category_appearance)) {
-                    SettingsChoiceTile(
-                        title = stringResource(R.string.setting_theme_mode),
-                        subtitle = stringResource(R.string.setting_theme_mode_desc),
-                        leadingIcon = AppIcons.BrightnessAuto,
-                        index = 0,
-                        count = itemCount
-                    ) {
-                        ConnectedChoiceRow(
-                            options = ThemeMode.entries,
-                            selected = settings.themeMode,
-                            onSelect = { repository.setThemeMode(it) },
-                            labelFor = {
-                                when (it) {
-                                    ThemeMode.SYSTEM -> stringResource(R.string.theme_system)
-                                    ThemeMode.LIGHT -> stringResource(R.string.theme_light)
-                                    ThemeMode.DARK -> stringResource(R.string.theme_dark)
-                                }
-                            },
-                            iconFor = {
-                                when (it) {
-                                    ThemeMode.SYSTEM -> AppIcons.BrightnessAuto
-                                    ThemeMode.LIGHT -> AppIcons.LightMode
-                                    ThemeMode.DARK -> AppIcons.DarkMode
-                                }
-                            },
-                            modifier = Modifier.testTag("setting_theme_mode_segmented")
-                        )
-                    }
-
-                    if (supportsDynamicColor) {
-                        SettingsSwitchTile(
-                            title = stringResource(R.string.setting_dynamic_color),
-                            subtitle = stringResource(R.string.setting_dynamic_color_desc),
-                            checked = settings.dynamicColor,
-                            onCheckedChange = { repository.setDynamicColor(it) },
-                            leadingIcon = AppIcons.Palette,
-                            index = 1,
-                            count = itemCount,
-                            modifier = Modifier.testTag("setting_dynamic_color_switch")
-                        )
-                    }
+            item(key = "header_appearance") {
+                SettingsSectionHeader(
+                    title = stringResource(R.string.category_appearance),
+                    isFirst = true
+                )
+            }
+            item(key = "tile_theme_mode") {
+                SettingsChoiceTile(
+                    title = stringResource(R.string.setting_theme_mode),
+                    subtitle = stringResource(R.string.setting_theme_mode_desc),
+                    leadingIcon = AppIcons.BrightnessAuto,
+                    index = 0,
+                    count = appearanceCount
+                ) {
+                    ConnectedChoiceRow(
+                        options = ThemeMode.entries,
+                        selected = settings.themeMode,
+                        onSelect = { repository.setThemeMode(it) },
+                        labelFor = {
+                            when (it) {
+                                ThemeMode.SYSTEM -> stringResource(R.string.theme_system)
+                                ThemeMode.LIGHT -> stringResource(R.string.theme_light)
+                                ThemeMode.DARK -> stringResource(R.string.theme_dark)
+                            }
+                        },
+                        iconFor = {
+                            when (it) {
+                                ThemeMode.SYSTEM -> AppIcons.BrightnessAuto
+                                ThemeMode.LIGHT -> AppIcons.LightMode
+                                ThemeMode.DARK -> AppIcons.DarkMode
+                            }
+                        },
+                        modifier = Modifier.testTag("setting_theme_mode_segmented")
+                    )
+                }
+            }
+            if (supportsDynamicColor) {
+                item(key = "tile_dynamic_color") {
+                    SettingsSwitchTile(
+                        title = stringResource(R.string.setting_dynamic_color),
+                        subtitle = stringResource(R.string.setting_dynamic_color_desc),
+                        checked = settings.dynamicColor,
+                        onCheckedChange = { repository.setDynamicColor(it) },
+                        leadingIcon = AppIcons.Palette,
+                        index = 1,
+                        count = appearanceCount,
+                        modifier = Modifier.testTag("setting_dynamic_color_switch")
+                    )
                 }
             }
 
             // 2. Clipboard & Automation
-            item(key = "section_clipboard") {
-                SettingsSection(title = stringResource(R.string.category_clipboard)) {
-                    SettingsSwitchTile(
-                        title = stringResource(R.string.setting_auto_paste),
-                        subtitle = stringResource(R.string.setting_auto_paste_desc),
-                        checked = settings.autoPasteOnLaunch,
-                        onCheckedChange = { repository.setAutoPasteOnLaunch(it) },
-                        leadingIcon = AppIcons.ContentPaste,
-                        index = 0,
-                        count = 2,
-                        modifier = Modifier.testTag("setting_auto_paste_switch")
-                    )
-
-                    SettingsSwitchTile(
-                        title = stringResource(R.string.setting_auto_copy),
-                        subtitle = stringResource(R.string.setting_auto_copy_desc),
-                        checked = settings.autoCopyOnConvert,
-                        onCheckedChange = { repository.setAutoCopyOnConvert(it) },
-                        leadingIcon = AppIcons.ContentCopy,
-                        index = 1,
-                        count = 2,
-                        modifier = Modifier.testTag("setting_auto_copy_switch")
-                    )
-                }
+            item(key = "header_clipboard") {
+                SettingsSectionHeader(title = stringResource(R.string.category_clipboard))
+            }
+            item(key = "tile_auto_paste") {
+                SettingsSwitchTile(
+                    title = stringResource(R.string.setting_auto_paste),
+                    subtitle = stringResource(R.string.setting_auto_paste_desc),
+                    checked = settings.autoPasteOnLaunch,
+                    onCheckedChange = { repository.setAutoPasteOnLaunch(it) },
+                    leadingIcon = AppIcons.ContentPaste,
+                    index = 0,
+                    count = 2,
+                    modifier = Modifier.testTag("setting_auto_paste_switch")
+                )
+            }
+            item(key = "tile_auto_copy") {
+                SettingsSwitchTile(
+                    title = stringResource(R.string.setting_auto_copy),
+                    subtitle = stringResource(R.string.setting_auto_copy_desc),
+                    checked = settings.autoCopyOnConvert,
+                    onCheckedChange = { repository.setAutoCopyOnConvert(it) },
+                    leadingIcon = AppIcons.ContentCopy,
+                    index = 1,
+                    count = 2,
+                    modifier = Modifier.testTag("setting_auto_copy_switch")
+                )
             }
 
             // 3. Markdown Formatting
-            item(key = "section_markdown") {
-                SettingsSection(title = stringResource(R.string.category_markdown)) {
-                    SettingsChoiceTile(
-                        title = stringResource(R.string.setting_heading_style),
-                        subtitle = stringResource(R.string.setting_heading_style_desc),
-                        leadingIcon = AppIcons.Title,
-                        index = 0,
-                        count = 5
-                    ) {
-                        ConnectedChoiceRow(
-                            options = HeadingStyle.entries,
-                            selected = settings.headingStyle,
-                            onSelect = { repository.setHeadingStyle(it) },
-                            labelFor = {
-                                when (it) {
-                                    HeadingStyle.ATX -> stringResource(R.string.option_heading_atx)
-                                    HeadingStyle.SETEXT -> stringResource(R.string.option_heading_setext)
-                                }
-                            },
-                            modifier = Modifier.testTag("setting_heading_style_segmented")
-                        )
-                    }
-
-                    SettingsChoiceTile(
-                        title = stringResource(R.string.setting_bullet_marker),
-                        subtitle = stringResource(R.string.setting_bullet_marker_desc),
-                        leadingIcon = AppIcons.FormatListBulleted,
-                        index = 1,
-                        count = 5
-                    ) {
-                        ConnectedChoiceRow(
-                            options = BulletMarker.entries,
-                            selected = settings.bulletMarker,
-                            onSelect = { repository.setBulletMarker(it) },
-                            labelFor = {
-                                when (it) {
-                                    BulletMarker.HYPHEN -> stringResource(R.string.option_bullet_hyphen)
-                                    BulletMarker.ASTERISK -> stringResource(R.string.option_bullet_asterisk)
-                                    BulletMarker.PLUS -> stringResource(R.string.option_bullet_plus)
-                                }
-                            },
-                            modifier = Modifier.testTag("setting_bullet_marker_segmented")
-                        )
-                    }
-
-                    SettingsChoiceTile(
-                        title = stringResource(R.string.setting_code_fence),
-                        subtitle = stringResource(R.string.setting_code_fence_desc),
-                        leadingIcon = AppIcons.DataObject,
-                        index = 2,
-                        count = 5
-                    ) {
-                        ConnectedChoiceRow(
-                            options = CodeFenceStyle.entries,
-                            selected = settings.codeFenceStyle,
-                            onSelect = { repository.setCodeFenceStyle(it) },
-                            labelFor = {
-                                when (it) {
-                                    CodeFenceStyle.BACKTICKS -> stringResource(R.string.option_fence_backticks)
-                                    CodeFenceStyle.TILDE -> stringResource(R.string.option_fence_tilde)
-                                }
-                            },
-                            modifier = Modifier.testTag("setting_code_fence_segmented")
-                        )
-                    }
-
-                    SettingsChoiceTile(
-                        title = stringResource(R.string.setting_emphasis_marker),
-                        subtitle = stringResource(R.string.setting_emphasis_marker_desc),
-                        leadingIcon = AppIcons.FormatItalic,
-                        index = 3,
-                        count = 5
-                    ) {
-                        ConnectedChoiceRow(
-                            options = EmphasisMarker.entries,
-                            selected = settings.emphasisMarker,
-                            onSelect = { repository.setEmphasisMarker(it) },
-                            labelFor = {
-                                when (it) {
-                                    EmphasisMarker.ASTERISK -> stringResource(R.string.option_emphasis_asterisk)
-                                    EmphasisMarker.UNDERSCORE -> stringResource(R.string.option_emphasis_underscore)
-                                }
-                            },
-                            modifier = Modifier.testTag("setting_emphasis_marker_segmented")
-                        )
-                    }
-
-                    SettingsSwitchTile(
-                        title = stringResource(R.string.setting_soft_breaks),
-                        subtitle = stringResource(R.string.setting_soft_breaks_desc),
-                        checked = settings.preserveLineBreaks,
-                        onCheckedChange = { repository.setPreserveLineBreaks(it) },
-                        leadingIcon = AppIcons.WrapText,
-                        index = 4,
-                        count = 5,
-                        modifier = Modifier.testTag("setting_soft_breaks_switch")
+            item(key = "header_markdown") {
+                SettingsSectionHeader(title = stringResource(R.string.category_markdown))
+            }
+            item(key = "tile_heading_style") {
+                SettingsChoiceTile(
+                    title = stringResource(R.string.setting_heading_style),
+                    subtitle = stringResource(R.string.setting_heading_style_desc),
+                    leadingIcon = AppIcons.Title,
+                    index = 0,
+                    count = 5
+                ) {
+                    ConnectedChoiceRow(
+                        options = HeadingStyle.entries,
+                        selected = settings.headingStyle,
+                        onSelect = { repository.setHeadingStyle(it) },
+                        labelFor = {
+                            when (it) {
+                                HeadingStyle.ATX -> stringResource(R.string.option_heading_atx)
+                                HeadingStyle.SETEXT -> stringResource(R.string.option_heading_setext)
+                            }
+                        },
+                        modifier = Modifier.testTag("setting_heading_style_segmented")
                     )
                 }
+            }
+            item(key = "tile_bullet_marker") {
+                SettingsChoiceTile(
+                    title = stringResource(R.string.setting_bullet_marker),
+                    subtitle = stringResource(R.string.setting_bullet_marker_desc),
+                    leadingIcon = AppIcons.FormatListBulleted,
+                    index = 1,
+                    count = 5
+                ) {
+                    ConnectedChoiceRow(
+                        options = BulletMarker.entries,
+                        selected = settings.bulletMarker,
+                        onSelect = { repository.setBulletMarker(it) },
+                        labelFor = {
+                            when (it) {
+                                BulletMarker.HYPHEN -> stringResource(R.string.option_bullet_hyphen)
+                                BulletMarker.ASTERISK -> stringResource(R.string.option_bullet_asterisk)
+                                BulletMarker.PLUS -> stringResource(R.string.option_bullet_plus)
+                            }
+                        },
+                        modifier = Modifier.testTag("setting_bullet_marker_segmented")
+                    )
+                }
+            }
+            item(key = "tile_code_fence") {
+                SettingsChoiceTile(
+                    title = stringResource(R.string.setting_code_fence),
+                    subtitle = stringResource(R.string.setting_code_fence_desc),
+                    leadingIcon = AppIcons.DataObject,
+                    index = 2,
+                    count = 5
+                ) {
+                    ConnectedChoiceRow(
+                        options = CodeFenceStyle.entries,
+                        selected = settings.codeFenceStyle,
+                        onSelect = { repository.setCodeFenceStyle(it) },
+                        labelFor = {
+                            when (it) {
+                                CodeFenceStyle.BACKTICKS -> stringResource(R.string.option_fence_backticks)
+                                CodeFenceStyle.TILDE -> stringResource(R.string.option_fence_tilde)
+                            }
+                        },
+                        modifier = Modifier.testTag("setting_code_fence_segmented")
+                    )
+                }
+            }
+            item(key = "tile_emphasis_marker") {
+                SettingsChoiceTile(
+                    title = stringResource(R.string.setting_emphasis_marker),
+                    subtitle = stringResource(R.string.setting_emphasis_marker_desc),
+                    leadingIcon = AppIcons.FormatItalic,
+                    index = 3,
+                    count = 5
+                ) {
+                    ConnectedChoiceRow(
+                        options = EmphasisMarker.entries,
+                        selected = settings.emphasisMarker,
+                        onSelect = { repository.setEmphasisMarker(it) },
+                        labelFor = {
+                            when (it) {
+                                EmphasisMarker.ASTERISK -> stringResource(R.string.option_emphasis_asterisk)
+                                EmphasisMarker.UNDERSCORE -> stringResource(R.string.option_emphasis_underscore)
+                            }
+                        },
+                        modifier = Modifier.testTag("setting_emphasis_marker_segmented")
+                    )
+                }
+            }
+            item(key = "tile_soft_breaks") {
+                SettingsSwitchTile(
+                    title = stringResource(R.string.setting_soft_breaks),
+                    subtitle = stringResource(R.string.setting_soft_breaks_desc),
+                    checked = settings.preserveLineBreaks,
+                    onCheckedChange = { repository.setPreserveLineBreaks(it) },
+                    leadingIcon = AppIcons.WrapText,
+                    index = 4,
+                    count = 5,
+                    modifier = Modifier.testTag("setting_soft_breaks_switch")
+                )
             }
 
             // 4. About (separated from destructive action)
-            item(key = "section_about") {
-                SettingsSection(title = stringResource(R.string.category_about)) {
-                    SettingsInfoTile(
-                        title = stringResource(R.string.app_name),
-                        subtitle = stringResource(R.string.app_about_desc),
-                        leadingIcon = AppIcons.Info,
-                        index = 0,
-                        count = 1,
-                        trailingContent = {
-                            Surface(
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.secondaryContainer,
-                                modifier = Modifier.testTag("app_version_chip")
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.app_version_label, BuildConfig.VERSION_NAME),
-                                    style = MaterialTheme.typography.labelMediumEmphasized,
-                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                                )
-                            }
+            item(key = "header_about") {
+                SettingsSectionHeader(title = stringResource(R.string.category_about))
+            }
+            item(key = "tile_about") {
+                SettingsInfoTile(
+                    title = stringResource(R.string.app_name),
+                    subtitle = stringResource(R.string.app_about_desc),
+                    leadingIcon = AppIcons.Info,
+                    index = 0,
+                    count = 1,
+                    trailingContent = {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            modifier = Modifier.testTag("app_version_chip")
+                        ) {
+                            Text(
+                                text = stringResource(R.string.app_version_label, BuildConfig.VERSION_NAME),
+                                style = MaterialTheme.typography.labelMediumEmphasized,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                            )
                         }
-                    )
-                }
+                    }
+                )
             }
 
             // 5. Reset (own section, isolated destructive action)
-            item(key = "section_reset") {
-                SettingsSection(title = stringResource(R.string.category_reset)) {
-                    SegmentedListItem(
-                        onClick = { showResetConfirmDialog = true },
-                        shapes = ListItemDefaults.segmentedShapes(index = 0, count = 1),
-                        colors = ListItemDefaults.segmentedColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainer
-                        ),
-                        leadingContent = {
-                            SettingsIconBadge(
-                                icon = AppIcons.Refresh,
-                                containerColor = MaterialTheme.colorScheme.errorContainer,
-                                contentColor = MaterialTheme.colorScheme.onErrorContainer
-                            )
-                        },
-                        supportingContent = {
-                            Text(
-                                text = stringResource(R.string.setting_reset_defaults_desc),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("setting_reset_defaults_tile")
-                    ) {
-                        Text(
-                            text = stringResource(R.string.setting_reset_defaults),
-                            style = MaterialTheme.typography.titleMediumEmphasized,
-                            color = MaterialTheme.colorScheme.error
+            item(key = "header_reset") {
+                SettingsSectionHeader(title = stringResource(R.string.category_reset))
+            }
+            item(key = "tile_reset") {
+                SegmentedListItem(
+                    onClick = { showResetConfirmDialog = true },
+                    shapes = ListItemDefaults.segmentedShapes(index = 0, count = 1),
+                    colors = ListItemDefaults.segmentedColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
+                    leadingContent = {
+                        SettingsIconBadge(
+                            icon = AppIcons.Refresh,
+                            containerColor = MaterialTheme.colorScheme.errorContainer,
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer
                         )
-                    }
+                    },
+                    supportingContent = {
+                        Text(
+                            text = stringResource(R.string.setting_reset_defaults_desc),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = SettingsMaxContentWidth)
+                        .testTag("setting_reset_defaults_tile")
+                ) {
+                    Text(
+                        text = stringResource(R.string.setting_reset_defaults),
+                        style = MaterialTheme.typography.titleMediumEmphasized,
+                        color = MaterialTheme.colorScheme.error
+                    )
                 }
             }
         }
@@ -384,6 +408,7 @@ fun SettingsScreen(
                     onClick = {
                         repository.resetToDefaults()
                         showResetConfirmDialog = false
+                        onResetCompleted()
                     },
                     shapes = ButtonDefaults.shapes(),
                     colors = ButtonDefaults.buttonColors(

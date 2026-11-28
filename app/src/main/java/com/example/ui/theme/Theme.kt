@@ -1,16 +1,24 @@
 package com.example.ui.theme
 
+import android.graphics.Color as AndroidColor
 import android.os.Build
+import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
+import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialExpressiveTheme
 import androidx.compose.material3.MotionScheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
 import com.example.data.ThemeMode
 
 private val DarkColorScheme = darkColorScheme(
@@ -88,6 +96,18 @@ private val LightColorScheme = lightColorScheme(
 )
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
+val ExpressiveShapes = Shapes(
+    extraSmall = RoundedCornerShape(4.dp),
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(16.dp),
+    largeIncreased = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(28.dp),
+    extraLargeIncreased = RoundedCornerShape(32.dp),
+    extraExtraLarge = RoundedCornerShape(48.dp)
+)
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun MyApplicationTheme(
     themeMode: ThemeMode = ThemeMode.SYSTEM,
@@ -100,10 +120,10 @@ fun MyApplicationTheme(
         ThemeMode.DARK -> true
     }
 
+    val context = LocalContext.current
     val colorScheme =
         when {
             dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-                val context = LocalContext.current
                 if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
             }
 
@@ -111,9 +131,26 @@ fun MyApplicationTheme(
             else -> LightColorScheme
         }
 
+    // Keep system status and navigation bar icon contrast synchronized with manual theme overrides.
+    val activity = context as? ComponentActivity
+    if (activity != null) {
+        LaunchedEffect(activity, darkTheme) {
+            val barStyle = if (darkTheme) {
+                SystemBarStyle.dark(AndroidColor.TRANSPARENT)
+            } else {
+                SystemBarStyle.light(AndroidColor.TRANSPARENT, AndroidColor.TRANSPARENT)
+            }
+            activity.enableEdgeToEdge(
+                statusBarStyle = barStyle,
+                navigationBarStyle = barStyle
+            )
+        }
+    }
+
     MaterialExpressiveTheme(
         colorScheme = colorScheme,
         motionScheme = MotionScheme.expressive(),
+        shapes = ExpressiveShapes,
         typography = Typography,
         content = content
     )

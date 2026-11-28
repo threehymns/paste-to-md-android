@@ -9,7 +9,6 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -49,32 +48,28 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.ui.AppIcons
 
-private val SettingsMaxContentWidth = 640.dp
+internal val SettingsMaxContentWidth = 640.dp
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-internal fun SettingsSection(
+internal fun SettingsSectionHeader(
     title: String,
-    content: @Composable ColumnScope.() -> Unit
+    isFirst: Boolean = false,
+    modifier: Modifier = Modifier
 ) {
-    Column(
-        modifier = Modifier
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleSmallEmphasized,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = modifier
             .fillMaxWidth()
-            .widthIn(max = SettingsMaxContentWidth),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleSmallEmphasized,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.padding(start = 16.dp, bottom = 2.dp)
-        )
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(ListItemDefaults.SegmentedGap),
-            content = content
-        )
-    }
+            .widthIn(max = SettingsMaxContentWidth)
+            .padding(
+                start = 16.dp,
+                top = if (isFirst) 0.dp else 22.dp,
+                bottom = 8.dp
+            )
+    )
 }
 
 @Composable
@@ -108,13 +103,16 @@ internal fun SettingsChoiceTile(
     leadingIcon: ImageVector,
     index: Int,
     count: Int,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
     val shape = ListItemDefaults.segmentedShapes(index = index, count = count).shape
     Surface(
         shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = Modifier.fillMaxWidth()
+        modifier = modifier
+            .fillMaxWidth()
+            .widthIn(max = SettingsMaxContentWidth)
     ) {
         Column(
             modifier = Modifier
@@ -167,7 +165,9 @@ internal fun SettingsInfoTile(
     Surface(
         shape = ListItemDefaults.segmentedShapes(index = index, count = count).shape,
         color = MaterialTheme.colorScheme.surfaceContainer,
-        modifier = modifier.fillMaxWidth()
+        modifier = modifier
+            .fillMaxWidth()
+            .widthIn(max = SettingsMaxContentWidth)
     ) {
         ListItem(
             leadingContent = {
@@ -346,6 +346,7 @@ internal fun SettingsSwitchTile(
         },
         modifier = modifier
             .fillMaxWidth()
+            .widthIn(max = SettingsMaxContentWidth)
             .semantics(mergeDescendants = true) {
                 role = Role.Switch
                 toggleableState = ToggleableState(checked)

@@ -16,7 +16,8 @@ import androidx.compose.ui.unit.sp
 
 data class MarkdownSyntaxHighlighter(
     private val colorScheme: ColorScheme,
-    private val baseFontSize: TextUnit = DEFAULT_BASE_FONT_SIZE_SP.sp
+    private val baseFontSize: TextUnit = DEFAULT_BASE_FONT_SIZE_SP.sp,
+    private val codeFontFamily: FontFamily = FontFamily.Monospace
 ) : VisualTransformation {
 
     override fun filter(text: AnnotatedString): TransformedText {
@@ -37,7 +38,7 @@ data class MarkdownSyntaxHighlighter(
             val codeSpanStyle = SpanStyle(
                 background = colorScheme.surfaceVariant,
                 color = colorScheme.onSurfaceVariant,
-                fontFamily = FontFamily.Monospace
+                fontFamily = codeFontFamily
             )
 
             // Blockquotes

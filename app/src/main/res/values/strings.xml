@@ -46,4 +46,22 @@
     <string name="option_fence_tilde">~~~ Tildes</string>
     <string name="option_emphasis_asterisk">* Asterisk</string>
     <string name="option_emphasis_underscore">_ Underscore</string>
+    <string name="paste_headline">Paste rich text</string>
+    <string name="paste_supporting_text">Copy rich text from any app. Paste it to get Markdown.</string>
+    <string name="action_paste">Paste</string>
+    <string name="action_converting">Converting…</string>
+    <string name="preview_placeholder">Pasted HTML will be converted to Markdown here…</string>
+    <string name="action_clear">Clear</string>
+    <string name="action_paste_again">Paste Again</string>
+    <string name="action_save_file">Save file</string>
+    <string name="action_copy_markdown">Copy Markdown</string>
+    <string name="feedback_file_saved">File saved successfully</string>
+    <string name="feedback_file_save_error">Error saving file</string>
+    <string name="feedback_copied">Markdown copied to clipboard</string>
+    <string name="feedback_converted_and_copied">Converted and copied to clipboard</string>
+    <string name="feedback_clipboard_empty">Clipboard is empty</string>
+    <string name="feedback_clipboard_no_text">No text or HTML found in clipboard</string>
+    <string name="feedback_convert_error">Error converting HTML</string>
+    <string name="feedback_convert_error_detail">Error converting HTML: %1$s</string>
+    <string name="feedback_settings_reset">Settings restored to defaults</string>
 </resources>

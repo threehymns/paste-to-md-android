@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import com.example.data.AppSettingsRepository
@@ -21,7 +22,6 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
-import org.robolectric.shadows.ShadowToast
 import java.io.File
 
 @RunWith(RobolectricTestRunner::class)
@@ -87,10 +87,7 @@ class ClipboardReliabilityTest {
         composeTestRule.onNodeWithTag("markdown_text_field").assertTextContains("Existing Markdown")
         val currentClip = clipboard.primaryClip
         assertEquals("<p>bad</p>", currentClip?.getItemAt(0)?.htmlText)
-        assertTrue(
-            "Expected error toast, got: ${ShadowToast.getTextOfLatestToast()}",
-            ShadowToast.getTextOfLatestToast()?.contains("Error converting HTML") == true
-        )
+        composeTestRule.onNodeWithText("Error converting HTML", substring = true).assertIsDisplayed()
     }
 
     @Test

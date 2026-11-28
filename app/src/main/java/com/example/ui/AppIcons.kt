@@ -13,13 +13,18 @@ import androidx.compose.ui.unit.dp
  */
 object AppIcons {
 
-    private fun createIcon(name: String, pathData: String): ImageVector {
+    private fun createIcon(
+        name: String,
+        pathData: String,
+        autoMirror: Boolean = false
+    ): ImageVector {
         return ImageVector.Builder(
             name = name,
             defaultWidth = 24.dp,
             defaultHeight = 24.dp,
             viewportWidth = 24f,
-            viewportHeight = 24f
+            viewportHeight = 24f,
+            autoMirror = autoMirror
         ).addPath(
             pathData = PathParser().parsePathString(pathData).toNodes(),
             fill = SolidColor(Color.Black)
@@ -64,7 +69,8 @@ object AppIcons {
     val ArrowBack: ImageVector by lazy {
         createIcon(
             name = "ArrowBack",
-            pathData = "M20,11H7.83l5.59-5.59L12,4l-8,8l8,8l1.41-1.41L7.83,13H20V11z"
+            pathData = "M20,11H7.83l5.59-5.59L12,4l-8,8l8,8l1.41-1.41L7.83,13H20V11z",
+            autoMirror = true
         )
     }
 
@@ -141,7 +147,8 @@ object AppIcons {
     val WrapText: ImageVector by lazy {
         createIcon(
             name = "WrapText",
-            pathData = "M4 19h6v-2H4v2zM20 5H4v2h16V5zm-3 6H4v2h13.25c1.1 0 2 .9 2 2s-.9 2-2 2H15v-2l-3 3 3 3v-2h2c2.21 0 4-1.79 4-4s-1.79-4-4-4z"
+            pathData = "M4 19h6v-2H4v2zM20 5H4v2h16V5zm-3 6H4v2h13.25c1.1 0 2 .9 2 2s-.9 2-2 2H15v-2l-3 3 3 3v-2h2c2.21 0 4-1.79 4-4s-1.79-4-4-4z",
+            autoMirror = true
         )
     }
 

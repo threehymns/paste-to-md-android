@@ -3,12 +3,24 @@ package com.example.ui.theme
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Typography
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import com.example.R
 
-val BrandFontFamily: FontFamily = FontFamily.SansSerif
-val PlainFontFamily: FontFamily = FontFamily.SansSerif
+// Expressive display/editorial typeface paired with a legible geometric body font and monospace code font
+val BrandFontFamily: FontFamily = FontFamily(
+    Font(R.font.outfit, FontWeight.Normal)
+)
+
+val PlainFontFamily: FontFamily = FontFamily(
+    Font(R.font.plus_jakarta_sans, FontWeight.Normal)
+)
+
+val MonoFontFamily: FontFamily = FontFamily(
+    Font(R.font.jetbrains_mono, FontWeight.Normal)
+)
 
 private val BaseDisplayLarge = TextStyle(
     fontFamily = BrandFontFamily,
@@ -78,21 +90,21 @@ private val BaseBodyLarge = TextStyle(
     fontWeight = FontWeight.Normal,
     fontSize = 16.sp,
     lineHeight = 24.sp,
-    letterSpacing = 0.5.sp
+    letterSpacing = 0.3.sp
 )
 private val BaseBodyMedium = TextStyle(
     fontFamily = PlainFontFamily,
     fontWeight = FontWeight.Normal,
     fontSize = 14.sp,
     lineHeight = 20.sp,
-    letterSpacing = 0.25.sp
+    letterSpacing = 0.2.sp
 )
 private val BaseBodySmall = TextStyle(
     fontFamily = PlainFontFamily,
     fontWeight = FontWeight.Normal,
     fontSize = 12.sp,
     lineHeight = 16.sp,
-    letterSpacing = 0.4.sp
+    letterSpacing = 0.35.sp
 )
 private val BaseLabelLarge = TextStyle(
     fontFamily = PlainFontFamily,
@@ -106,17 +118,17 @@ private val BaseLabelMedium = TextStyle(
     fontWeight = FontWeight.Medium,
     fontSize = 12.sp,
     lineHeight = 16.sp,
-    letterSpacing = 0.5.sp
+    letterSpacing = 0.4.sp
 )
 private val BaseLabelSmall = TextStyle(
     fontFamily = PlainFontFamily,
     fontWeight = FontWeight.Medium,
     fontSize = 11.sp,
     lineHeight = 16.sp,
-    letterSpacing = 0.5.sp
+    letterSpacing = 0.4.sp
 )
 
-// Material 3 Expressive typography scale backed by Android's native variable sans-serif font
+// Unified Material 3 Expressive typography scale (baseline + emphasized tokens)
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 val Typography = Typography(
     displayLarge = BaseDisplayLarge,
@@ -141,7 +153,7 @@ val Typography = Typography(
     headlineMediumEmphasized = BaseHeadlineMedium.copy(fontWeight = FontWeight.Bold),
     headlineSmallEmphasized = BaseHeadlineSmall.copy(fontWeight = FontWeight.Bold),
     titleLargeEmphasized = BaseTitleLarge.copy(fontWeight = FontWeight.Bold),
-    titleMediumEmphasized = BaseTitleMedium.copy(fontWeight = FontWeight.SemiBold),
+    titleMediumEmphasized = BaseTitleMedium.copy(fontWeight = FontWeight.Bold),
     titleSmallEmphasized = BaseTitleSmall.copy(fontWeight = FontWeight.Bold),
     bodyLargeEmphasized = BaseBodyLarge.copy(fontWeight = FontWeight.Medium),
     bodyMediumEmphasized = BaseBodyMedium.copy(fontWeight = FontWeight.Medium),
@@ -149,22 +161,4 @@ val Typography = Typography(
     labelLargeEmphasized = BaseLabelLarge.copy(fontWeight = FontWeight.Bold),
     labelMediumEmphasized = BaseLabelMedium.copy(fontWeight = FontWeight.Bold),
     labelSmallEmphasized = BaseLabelSmall.copy(fontWeight = FontWeight.Bold)
-)
-
-val EmphasizedTypography = Typography(
-    displayLarge = Typography.displayLarge.copy(fontWeight = FontWeight.Bold),
-    displayMedium = Typography.displayMedium.copy(fontWeight = FontWeight.Bold),
-    displaySmall = Typography.displaySmall.copy(fontWeight = FontWeight.Bold),
-    headlineLarge = Typography.headlineLarge.copy(fontWeight = FontWeight.Bold),
-    headlineMedium = Typography.headlineMedium.copy(fontWeight = FontWeight.Bold),
-    headlineSmall = Typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-    titleLarge = Typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-    titleMedium = Typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-    titleSmall = Typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold),
-    bodyLarge = Typography.bodyLarge.copy(fontWeight = FontWeight.Bold),
-    bodyMedium = Typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-    bodySmall = Typography.bodySmall.copy(fontWeight = FontWeight.Bold),
-    labelLarge = Typography.labelLarge.copy(fontWeight = FontWeight.ExtraBold),
-    labelMedium = Typography.labelMedium.copy(fontWeight = FontWeight.ExtraBold),
-    labelSmall = Typography.labelSmall.copy(fontWeight = FontWeight.ExtraBold)
 )
