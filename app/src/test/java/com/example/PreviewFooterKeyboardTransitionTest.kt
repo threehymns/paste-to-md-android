@@ -75,7 +75,8 @@ class PreviewFooterKeyboardTransitionTest {
         // Open keyboard and advance mid-flight through the M3 Expressive spatial spring.
         composeTestRule.mainClock.autoAdvance = false
         composeTestRule.runOnIdle { keyboardOpen = true }
-        composeTestRule.mainClock.advanceTimeBy(16L)
+        composeTestRule.waitForIdle()
+        composeTestRule.mainClock.advanceTimeByFrame()
         composeTestRule.mainClock.advanceTimeBy(80L)
 
         val midExitToolbarBounds = composeTestRule
@@ -129,7 +130,8 @@ class PreviewFooterKeyboardTransitionTest {
         // Close keyboard and verify the footer springs back upward from below its resting position.
         composeTestRule.mainClock.autoAdvance = false
         composeTestRule.runOnIdle { keyboardOpen = false }
-        composeTestRule.mainClock.advanceTimeBy(16L)
+        composeTestRule.waitForIdle()
+        composeTestRule.mainClock.advanceTimeByFrame()
         composeTestRule.mainClock.advanceTimeBy(64L)
 
         val midEnterToolbarBounds = composeTestRule
@@ -228,7 +230,8 @@ class PreviewFooterKeyboardTransitionTest {
         // Open keyboard and advance mid-flight through the horizontal spatial spring.
         composeTestRule.mainClock.autoAdvance = false
         composeTestRule.runOnIdle { keyboardOpen = true }
-        composeTestRule.mainClock.advanceTimeBy(16L)
+        composeTestRule.waitForIdle()
+        composeTestRule.mainClock.advanceTimeByFrame()
         composeTestRule.mainClock.advanceTimeBy(80L)
 
         val midExitCopyBounds = composeTestRule
@@ -270,7 +273,8 @@ class PreviewFooterKeyboardTransitionTest {
         // Close keyboard and verify the side actions spring back in from the right.
         composeTestRule.mainClock.autoAdvance = false
         composeTestRule.runOnIdle { keyboardOpen = false }
-        composeTestRule.mainClock.advanceTimeBy(16L)
+        composeTestRule.waitForIdle()
+        composeTestRule.mainClock.advanceTimeByFrame()
         composeTestRule.mainClock.advanceTimeBy(64L)
 
         val midEnterCopyBounds = composeTestRule

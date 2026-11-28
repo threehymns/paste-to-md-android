@@ -305,7 +305,6 @@ internal fun ExpressiveButtonMorphOverlay(
         Box(
             contentAlignment = Alignment.Center,
             modifier = Modifier
-                .testTag("primary_action_morph_overlay")
                 .layout { measurable, _ ->
                     val rect = interpolateMorphButtonRect(
                         pasteBounds = pasteBounds,
@@ -319,6 +318,7 @@ internal fun ExpressiveButtonMorphOverlay(
                         placeable.place(rect.left.roundToInt(), rect.top.roundToInt())
                     }
                 }
+                .testTag("primary_action_morph_overlay")
                 .graphicsLayer {
                     val visuals = computeMorphContentVisuals(spatialProgress())
                     shape = computePressMorphCornerShape(
