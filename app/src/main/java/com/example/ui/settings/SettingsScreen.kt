@@ -306,7 +306,7 @@ fun SettingsScreen(
                                 modifier = Modifier.testTag("app_version_chip")
                             ) {
                                 Text(
-                                    text = "v${BuildConfig.VERSION_NAME}",
+                                    text = stringResource(R.string.app_version_label, BuildConfig.VERSION_NAME),
                                     style = MaterialTheme.typography.labelMediumEmphasized,
                                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)

@@ -2,14 +2,27 @@ name: Release
 
 on:
   push:
+    branches:
+      - main
+    paths:
+      - 'app/build.gradle.kts'
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
       versionName:
-        description: 'Override versionName (e.g. 1.1.0). Defaults to tag name without leading v, or 1.0.'
+        description: 'Override versionName (e.g. 0.0.6). Defaults to tag name without leading v, or app/build.gradle.kts.'
         required: false
         default: ''
+      versionCode:
+        description: 'Override versionCode (positive integer). Defaults to app/build.gradle.kts.'
+        required: false
+        default: ''
+      publishRelease:
+        description: 'Publish a GitHub Release for this manual run'
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -19,9 +32,117 @@ permissions:
   contents: write
 
 jobs:
+  check:
+    name: Check version bump
+    runs-on: ubuntu-latest
+    outputs:
+      should_release: ${{ steps.version.outputs.should_release }}
+      publish_release: ${{ steps.version.outputs.publish_release }}
+      version_name: ${{ steps.version.outputs.version_name }}
+      version_code: ${{ steps.version.outputs.version_code }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check version bump and resolve release metadata
+        id: version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BEFORE_SHA: ${{ github.event.before }}
+          INPUT_VERSION_NAME: ${{ inputs.versionName }}
+          INPUT_VERSION_CODE: ${{ inputs.versionCode }}
+          INPUT_PUBLISH_RELEASE: ${{ inputs.publishRelease }}
+        run: |
+          set -e
+
+          extract_version_name() {
+            sed -nE 's/^[[:space:]]*versionName[[:space:]]*=.*[=:][[:space:]]*"([^"]+)"[[:space:]]*$/\1/p' | head -n 1
+          }
+          extract_version_code() {
+            sed -nE 's/^[[:space:]]*versionCode[[:space:]]*=.*[=:][[:space:]]*([0-9]+)[[:space:]]*$/\1/p' | head -n 1
+          }
+
+          GRADLE_VERSION_NAME=$(extract_version_name < app/build.gradle.kts)
+          GRADLE_VERSION_CODE=$(extract_version_code < app/build.gradle.kts)
+
+          if [ -n "$INPUT_VERSION_NAME" ]; then
+            VERSION_NAME="$INPUT_VERSION_NAME"
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            VERSION_NAME="${GITHUB_REF_NAME#v}"
+          else
+            VERSION_NAME="$GRADLE_VERSION_NAME"
+          fi
+
+          if [ -n "$INPUT_VERSION_CODE" ]; then
+            VERSION_CODE="$INPUT_VERSION_CODE"
+          else
+            VERSION_CODE="$GRADLE_VERSION_CODE"
+          fi
+
+          test -n "$VERSION_NAME" || { echo "::error::Failed to resolve versionName from app/build.gradle.kts."; exit 1; }
+          test -n "$VERSION_CODE" || { echo "::error::Failed to resolve versionCode from app/build.gradle.kts."; exit 1; }
+
+          SHOULD_RELEASE="false"
+          PUBLISH_RELEASE="false"
+          RELEASE_TAG="v${VERSION_NAME}"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            SHOULD_RELEASE="true"
+            if [ "$INPUT_PUBLISH_RELEASE" = "true" ]; then
+              PUBLISH_RELEASE="true"
+              if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
+                RELEASE_TAG="v${VERSION_NAME}-b${VERSION_CODE}"
+              fi
+            fi
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            SHOULD_RELEASE="true"
+            PUBLISH_RELEASE="true"
+            RELEASE_TAG="$GITHUB_REF_NAME"
+          else
+            # Push to main touching app/build.gradle.kts: trigger only when versionCode strictly increases.
+            OLD_CODE=""
+            if [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ] && git cat-file -e "${BEFORE_SHA}:app/build.gradle.kts" 2>/dev/null; then
+              OLD_CODE=$(git show "${BEFORE_SHA}:app/build.gradle.kts" | extract_version_code)
+            elif git cat-file -e "HEAD~1:app/build.gradle.kts" 2>/dev/null; then
+              OLD_CODE=$(git show "HEAD~1:app/build.gradle.kts" | extract_version_code)
+            fi
+            OLD_CODE="${OLD_CODE:-0}"
+
+            echo "versionCode comparison: previous=${OLD_CODE}, current=${VERSION_CODE}"
+            if [ "$VERSION_CODE" -gt "$OLD_CODE" ]; then
+              SHOULD_RELEASE="true"
+              PUBLISH_RELEASE="true"
+              # Avoid overwriting an existing tag if versionName was not updated alongside versionCode.
+              if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
+                RELEASE_TAG="v${VERSION_NAME}-b${VERSION_CODE}"
+              fi
+            else
+              echo "Skipping release: versionCode did not increase (${OLD_CODE} -> ${VERSION_CODE})."
+            fi
+          fi
+
+          {
+            echo "should_release=${SHOULD_RELEASE}"
+            echo "publish_release=${PUBLISH_RELEASE}"
+            echo "version_name=${VERSION_NAME}"
+            echo "version_code=${VERSION_CODE}"
+            echo "release_tag=${RELEASE_TAG}"
+          } >> "$GITHUB_OUTPUT"
+          echo "Decision: should_release=${SHOULD_RELEASE} publish_release=${PUBLISH_RELEASE} versionName=${VERSION_NAME} versionCode=${VERSION_CODE} tag=${RELEASE_TAG}"
+
   release:
     name: Build signed release & publish
+    needs: check
+    if: needs.check.outputs.should_release == 'true'
     runs-on: ubuntu-latest
+    env:
+      VERSION_NAME: ${{ needs.check.outputs.version_name }}
+      VERSION_CODE: ${{ needs.check.outputs.version_code }}
+      RELEASE_TAG: ${{ needs.check.outputs.release_tag }}
 
     steps:
       - name: Checkout repository
@@ -84,24 +205,6 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
-      - name: Resolve versionName and versionCode
-        env:
-          INPUT_VERSION_NAME: ${{ inputs.versionName }}
-        run: |
-          set -e
-          if [ -n "$INPUT_VERSION_NAME" ]; then
-            VERSION_NAME="$INPUT_VERSION_NAME"
-          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            VERSION_NAME="${GITHUB_REF_NAME#v}"
-          else
-            VERSION_NAME="0.0.1"
-          fi
-          # GITHUB_RUN_NUMBER is monotonic per workflow and safe as versionCode.
-          VERSION_CODE="$GITHUB_RUN_NUMBER"
-          echo "VERSION_NAME=$VERSION_NAME" >> "$GITHUB_ENV"
-          echo "VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
-          echo "Building release versionName=$VERSION_NAME versionCode=$VERSION_CODE"
-
       - name: Run unit tests
         # Note: AGP only creates unit-test tasks for the debug build type by
         # default (testBuildType = "debug"), so testReleaseUnitTest does not
@@ -153,9 +256,12 @@ jobs:
           if-no-files-found: error
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
+        if: needs.check.outputs.publish_release == 'true'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: ${{ env.RELEASE_TAG }}
+          target_commitish: ${{ github.sha }}
           files: |
             ${{ env.APK }}
             ${{ env.AAB }}

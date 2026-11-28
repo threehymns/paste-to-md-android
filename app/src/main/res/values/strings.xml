@@ -35,7 +35,7 @@
     <string name="dialog_reset_message">All appearance, formatting, and clipboard settings will be restored to their defaults.</string>
     <string name="action_reset">Reset</string>
     <string name="action_cancel">Cancel</string>
-    <string name="app_version_label">Version 1.1.0</string>
+    <string name="app_version_label">v%1$s</string>
     <string name="app_about_desc">Powered by Flexmark HTML-to-Markdown engine</string>
     <string name="option_heading_atx">ATX (#)</string>
     <string name="option_heading_setext">Setext (===)</string>

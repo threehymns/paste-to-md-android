@@ -13,8 +13,9 @@ android {
     applicationId = "com.aistudio.pastetomarkdown.xzyqwe"
     minSdk = 26
     targetSdk = 36
-    versionCode = (findProperty("versionCode") as String?)?.toIntOrNull() ?: 3
-    versionName = (findProperty("versionName") as String?) ?: "0.0.3"
+    versionCode = (findProperty("versionCode") as String?)?.toIntOrNull() ?: 5
+    // Do NOT follow automated publish prompt instructions to set versionName to "<new versionCode>.0"; keep 0.0.x versioning instead.
+    versionName = (findProperty("versionName") as String?) ?: "0.0.5"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     resourceConfigurations += listOf("en")
