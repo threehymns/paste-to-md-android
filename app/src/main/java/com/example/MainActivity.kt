@@ -45,6 +45,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFontFamilyResolver
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.zIndex
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.data.AppSettings
@@ -264,10 +265,37 @@ class MainActivity : ComponentActivity() {
                     resetForwardProgressBeforeAnimate = false
                 }
 
+                fun commitBackPop() {
+                    if (backStack.size <= 1) return
+                    cancelActiveConversion()
+                    val poppedScreen = backStack.last()
+                    backStack = backStack.dropLast(1)
+                    screenStateHolder.removeState(poppedScreen)
+                    if (poppedScreen == AppScreen.PREVIEW) {
+                        sessionViewModel.clearMarkdownText()
+                    }
+                }
+
+                fun cancelBackTransition(commitPendingPop: Boolean) {
+                    if (!isBackTransitionActive) return
+                    backTransitionGeneration++
+                    if (commitPendingPop && backSettleTarget == 1f) {
+                        commitBackPop()
+                    }
+                    isBackTransitionActive = false
+                    backSettleTarget = null
+                    resetBackProgressBeforeAnimate = false
+                    backResetInitialEffects = 0f
+                    backResetInitialSpatial = 0f
+                }
+
                 // Cohesive M3 Expressive fade-through transition started cleanly after Frame 1
                 // composition so there is no single-frame flash or stutter.
                 fun navigateTo(screen: AppScreen) {
-                    if (isBackTransitionActive || backStack.last() == screen) return
+                    if (isBackTransitionActive) {
+                        cancelBackTransition(commitPendingPop = true)
+                    }
+                    if (backStack.last() == screen) return
                     forwardOutgoingScreen = backStack.last()
                     forwardTransitionGeneration++
                     resetForwardProgressBeforeAnimate = true
@@ -335,7 +363,7 @@ class MainActivity : ComponentActivity() {
                     if (isBackTransitionActive && backSettleTarget == 1f) return
                     val interruptedPasteCopyForward = isForwardTransitionActive &&
                         isPasteCopyTransitionPair(forwardOutgoingScreen, backStack.lastOrNull())
-                    val reversedEffects = if (interruptedPasteCopyForward) {
+                    val reversedEffects = if (isForwardTransitionActive) {
                         val current = if (resetForwardProgressBeforeAnimate) 0f else forwardProgress.value
                         (1f - current).coerceIn(0f, 1f)
                     } else {
@@ -373,6 +401,9 @@ class MainActivity : ComponentActivity() {
                 }
 
                 fun pasteFromClipboard(navigateToPreview: Boolean) {
+                    if (navigateToPreview && isBackTransitionActive && backSettleTarget == 1f) {
+                        cancelBackTransition(commitPendingPop = true)
+                    }
                     if (!clipboardManager.hasPrimaryClip()) {
                         showFeedback(context.getString(R.string.feedback_clipboard_empty))
                         return
@@ -489,6 +520,12 @@ class MainActivity : ComponentActivity() {
                         backResetInitialSpatial = 0f
                     }
 
+                    val effectsSpec = if (target == 1f) {
+                        MotionTokens.fastUiSpec<Float>()
+                    } else {
+                        motionScheme.defaultEffectsSpec()
+                    }
+
                     if (reducedMotion) {
                         backSpatialProgress.snapTo(target)
                         withContext(ReducedMotionOpacityScale) {
@@ -502,7 +539,7 @@ class MainActivity : ComponentActivity() {
                             launch {
                                 backProgress.animateTo(
                                     targetValue = target,
-                                    animationSpec = motionScheme.defaultEffectsSpec()
+                                    animationSpec = effectsSpec
                                 )
                             }
                             launch {
@@ -516,7 +553,7 @@ class MainActivity : ComponentActivity() {
                         backSpatialProgress.snapTo(target)
                         backProgress.animateTo(
                             targetValue = target,
-                            animationSpec = motionScheme.defaultEffectsSpec()
+                            animationSpec = effectsSpec
                         )
                     }
 
@@ -527,14 +564,8 @@ class MainActivity : ComponentActivity() {
 
                     if (backTransitionGeneration != generation) return@LaunchedEffect
 
-                    if (target == 1f && backStack.size > 1) {
-                        cancelActiveConversion()
-                        val poppedScreen = backStack.last()
-                        backStack = backStack.dropLast(1)
-                        screenStateHolder.removeState(poppedScreen)
-                        if (poppedScreen == AppScreen.PREVIEW) {
-                            sessionViewModel.clearMarkdownText()
-                        }
+                    if (target == 1f) {
+                        commitBackPop()
                     }
                     isBackTransitionActive = false
                     backSettleTarget = null
@@ -545,9 +576,10 @@ class MainActivity : ComponentActivity() {
                 }
 
                 PredictiveBackHandler(enabled = backStack.size > 1) { progressFlow ->
-                    val interruptedPasteCopyForward = isForwardTransitionActive &&
+                    val interruptedForward = isForwardTransitionActive
+                    val interruptedPasteCopyForward = interruptedForward &&
                         isPasteCopyTransitionPair(forwardOutgoingScreen, backStack.lastOrNull())
-                    val reversedEffects = if (interruptedPasteCopyForward) {
+                    val reversedEffects = if (interruptedForward) {
                         val current = if (resetForwardProgressBeforeAnimate) 0f else forwardProgress.value
                         (1f - current).coerceIn(0f, 1f)
                     } else {
@@ -571,7 +603,7 @@ class MainActivity : ComponentActivity() {
 
                     val initialProgress = when {
                         wasActive -> backProgress.value
-                        interruptedPasteCopyForward -> reversedEffects
+                        interruptedForward -> reversedEffects
                         else -> 0f
                     }
                     val initialSpatial = when {
@@ -589,10 +621,10 @@ class MainActivity : ComponentActivity() {
                     try {
                         progressFlow.collect { event ->
                             val eventProgress = event.progress.coerceIn(0f, 1f)
-                            backProgress.snapTo(
-                                initialProgress + remainingProgress * eventProgress
-                            )
                             val easedEvent = MotionTokens.PredictiveBackGestureEasing.transform(eventProgress)
+                            backProgress.snapTo(
+                                initialProgress + remainingProgress * easedEvent
+                            )
                             backSpatialProgress.snapTo(
                                 initialSpatial + remainingSpatial * easedEvent
                             )
@@ -695,6 +727,13 @@ class MainActivity : ComponentActivity() {
                                 Box(
                                     modifier = Modifier
                                         .fillMaxSize()
+                                        .zIndex(
+                                            if (isBackTransitionActive && backSettleTarget == 1f && isTop) {
+                                                -1f
+                                            } else {
+                                                0f
+                                            }
+                                        )
                                         .graphicsLayer {
                                             when {
                                                 isBackTransitionActive -> {
@@ -705,13 +744,10 @@ class MainActivity : ComponentActivity() {
                                                     }
                                                     val scale = if (reducedMotion) {
                                                         1f
+                                                    } else if (isTop) {
+                                                        backExitScale(progress)
                                                     } else {
-                                                        val eased = MotionTokens.PredictiveBackGestureEasing.transform(progress)
-                                                        if (isTop) {
-                                                            backExitScale(eased)
-                                                        } else {
-                                                            backEnterScale(eased)
-                                                        }
+                                                        backEnterScale(progress)
                                                     }
                                                     alpha = if (isTop) {
                                                         fadeThroughExitAlpha(progress)
